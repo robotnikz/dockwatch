@@ -1,14 +1,17 @@
 import { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { getStacks, type Stack } from '../api';
+import { getStacks, getAppVersionStatus, type AppVersionStatus, type Stack } from '../api';
 
 export default function Sidebar() {
   const [stacks, setStacks] = useState<Stack[]>([]);
+  const [appVersion, setAppVersion] = useState<AppVersionStatus | null>(null);
   const [search, setSearch] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
 
   const fetchStacks = () => getStacks().then(setStacks).catch(console.error);
+  const fetchAppVersion = (force = false) =>
+    getAppVersionStatus(force).then(setAppVersion).catch(console.error);
 
   useEffect(() => {
     fetchStacks();
@@ -16,7 +19,26 @@ export default function Sidebar() {
     return () => clearInterval(id);
   }, []);
 
+  useEffect(() => {
+    fetchAppVersion(true);
+    const id = setInterval(() => fetchAppVersion(false), 60 * 60 * 1000); // hourly check
+    return () => clearInterval(id);
+  }, []);
+
   const filteredStacks = stacks.filter((s) => s.name.toLowerCase().includes(search.toLowerCase()));
+
+  const versionBadge = (() => {
+    if (!appVersion) {
+      return <span className="rounded-full bg-dock-border/40 px-2 py-0.5 text-[10px] font-semibold text-dock-muted">Checking...</span>;
+    }
+    if (appVersion.checkFailed) {
+      return <span className="rounded-full bg-rose-500/20 px-2 py-0.5 text-[10px] font-semibold text-rose-300">Check Failed</span>;
+    }
+    if (appVersion.updateAvailable) {
+      return <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-300">Update Available</span>;
+    }
+    return <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">Up To Date</span>;
+  })();
 
   return (
     <aside className="w-[280px] shrink-0 border-r border-dock-border/50 bg-dock-card/60 flex flex-col">
@@ -73,6 +95,26 @@ export default function Sidebar() {
       </div>
 
       <div className="p-4 border-t border-dock-border/50 space-y-2">
+        <div className="rounded-xl border border-dock-border/60 bg-dock-bg/40 px-4 py-3">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs uppercase tracking-wide text-dock-muted">DockWatch</span>
+            {versionBadge}
+          </div>
+          <div className="mt-2 text-sm font-medium text-white">
+            v{appVersion?.currentVersion || '...'}
+          </div>
+          {appVersion?.latestVersion && appVersion.updateAvailable ? (
+            <div className="mt-1 text-xs text-dock-muted">Latest: v{appVersion.latestVersion}</div>
+          ) : null}
+          <a
+            href={appVersion?.releaseUrl || appVersion?.githubUrl || 'https://github.com/robotnikz/dockwatch'}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-2 inline-block text-xs font-medium text-dock-accent hover:underline"
+          >
+            Open on GitHub
+          </a>
+        </div>
         <NavLink 
           to="/" 
           className={({isActive}) => `block rounded-xl px-4 py-2 text-sm font-medium transition ${isActive ? 'text-dock-accent' : 'text-dock-muted hover:text-white'}`}

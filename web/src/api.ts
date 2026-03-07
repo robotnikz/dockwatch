@@ -171,3 +171,17 @@ export async function streamStackAction(
     if (done) break;
   }
 }
+
+// ---- Meta ----
+export interface AppVersionStatus {
+  currentVersion: string;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+  checkedAt: string;
+  githubUrl: string;
+  releaseUrl: string | null;
+  checkFailed: boolean;
+}
+
+export const getAppVersionStatus = (force = false) =>
+  request<AppVersionStatus>(`/meta/version${force ? '?force=true' : ''}`);

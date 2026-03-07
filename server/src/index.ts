@@ -9,6 +9,7 @@ import settingsRouter from './routes/settings.js';
 import statsRouter from './routes/stats.js';
 import convertRouter from './routes/convert.js';
 import resourcesRouter from './routes/resources.js';
+import metaRouter from './routes/meta.js';
 import { startScheduler } from './services/scheduler.js';
 import { ensureStacksDir } from './services/docker.js';
 
@@ -27,6 +28,7 @@ app.use('/api/settings', settingsRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/convert', convertRouter);
 app.use('/api/resources', resourcesRouter);
+app.use('/api/meta', metaRouter);
 
 // Serve frontend in production
 const webDist = path.resolve(__dirname, '../../web-dist');
