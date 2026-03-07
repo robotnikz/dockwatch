@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import * as yaml from 'yaml';
 
 const execFileAsync = promisify(execFile);
 const STACKS_DIR = process.env.DOCKWATCH_STACKS || '/opt/stacks';
@@ -147,9 +148,44 @@ export async function composePs(name: string): Promise<string> {
 }
 
 export async function composePullAndRecreate(name: string, onChunk?: (chunk: string) => void): Promise<string> {
-  const pullResult = await runCompose(name, ['pull'], onChunk);
+  let servicesToPull: string[] = [];
+  try {
+    const yamlContent = await fs.readFile(path.join(stackDir(name), 'compose.yaml'), 'utf-8');
+    const parsed = yaml.parse(yamlContent);
+    if (parsed && typeof parsed === 'object' && parsed.services) {
+      for (const [svcName, svcConfig] of Object.entries(parsed.services)) {
+        const config = svcConfig as any;
+        let exclude = false;
+        if (config.labels) {
+          if (Array.isArray(config.labels)) {
+            exclude = config.labels.some((l: string) => l.startsWith('dockwatch.update.exclude=') && l.split('=')[1].trim() === 'true');
+          } else if (typeof config.labels === 'object') {
+            exclude = config.labels['dockwatch.update.exclude'] === 'true' || config.labels['dockwatch.update.exclude'] === true;
+          }
+        }
+        if (!exclude) {
+          servicesToPull.push(svcName);
+        } else if (onChunk) {
+          onChunk(`[Dockwatch] Skipping auto-update pull for excluded service: ${svcName}\n`);
+        }
+      }
+    }
+  } catch (e: any) {
+    if (onChunk) onChunk(`[Dockwatch] Error parsing compose.yaml for update exclusions: ${e.message}\n`);
+  }
+
+  // If no services to pull because all are excluded, we just run up
+  let pullOutput = '';
+  if (servicesToPull.length > 0) {
+    const pullResult = await runCompose(name, ['pull', ...servicesToPull], onChunk);
+    pullOutput = pullResult.stdout + pullResult.stderr + '\n';
+  } else if (onChunk) {
+    onChunk('[Dockwatch] No services to pull (all are excluded or no services found).\n');
+  }
+
+  // Up still recreate containers if needed, but it checks if image changed. If not pulled, it won't be recreated normally unless yaml changed.
   const upResult = await runCompose(name, ['up', '-d', '--remove-orphans'], onChunk);
-  return pullResult.stdout + pullResult.stderr + '\n' + upResult.stdout + upResult.stderr;
+  return pullOutput + upResult.stdout + upResult.stderr;
 }
 
 /** Get images used by running containers for a stack */

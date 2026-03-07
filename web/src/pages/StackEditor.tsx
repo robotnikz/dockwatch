@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getStack, getStacks, saveStack, deleteStack, stackUp, stackDown, stackRestart, stackUpdate, stackLogs, streamStackAction, type Stack } from '../api';
 import { AnsiUp } from 'ansi_up';
+import ServiceConfigurator from '../components/ServiceConfigurator';
 
 const ansiUp = new AnsiUp();
 
@@ -240,7 +241,7 @@ export default function StackEditor() {
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Left Side: Services & Terminal */}
         <div className="space-y-6 flex flex-col">
-          {!isNew && (
+          {isEditing ? <ServiceConfigurator content={content} setContent={setContent} /> : !isNew && (
             <>
               <div>
                 <h2 className="text-xl font-medium text-white mb-3 tracking-tight">Container</h2>
@@ -266,7 +267,7 @@ export default function StackEditor() {
                         Stack starten
                       </button>
                     </div>
-                  )}
+          )}
                 </div>
               </div>
 
