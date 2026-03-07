@@ -35,7 +35,7 @@ Real screenshots with sanitized placeholder data. No private hostnames, secrets,
 
 ### Dashboard
 
-![DockWatch Dashboard Placeholder](docs/screenshots/dashboard-placeholder.svg)
+![DockWatch Dashboard](docs/screenshots/dashboard.png)
 
 ### Stack Editor (Policies + Limits)
 
