@@ -2,12 +2,13 @@
 
 # 🐳 DockWatch
 
-[![Release](https://img.shields.io/github/v/release/robotnikz/dockwatch?style=flat-square&color=blue)](https://github.com/robotnikz/dockwatch/releases)
-[![Docker Build](https://img.shields.io/github/actions/workflow/status/robotnikz/dockwatch/docker-publish.yml?style=flat-square&label=Docker)](https://github.com/robotnikz/dockwatch/actions/workflows/docker-publish.yml)
-[![CI](https://img.shields.io/github/actions/workflow/status/robotnikz/dockwatch/ci.yml?style=flat-square&label=CI)](https://github.com/robotnikz/dockwatch/actions/workflows/ci.yml)
-[![CodeQL](https://img.shields.io/github/actions/workflow/status/robotnikz/dockwatch/codeql.yml?style=flat-square&label=CodeQL)](https://github.com/robotnikz/dockwatch/actions/workflows/codeql.yml)
-[![Security](https://img.shields.io/github/actions/workflow/status/robotnikz/dockwatch/security.yml?style=flat-square&label=Security)](https://github.com/robotnikz/dockwatch/actions/workflows/security.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+[![Stars](https://img.shields.io/github/stars/robotnikz/dockwatch?style=flat-square)](https://github.com/robotnikz/dockwatch/stargazers)
+[![Issues](https://img.shields.io/github/issues/robotnikz/dockwatch?style=flat-square)](https://github.com/robotnikz/dockwatch/issues)
+[![Last Commit](https://img.shields.io/github/last-commit/robotnikz/dockwatch?style=flat-square)](https://github.com/robotnikz/dockwatch/commits/main)
+[![CI/CD Pipeline](https://img.shields.io/github/actions/workflow/status/robotnikz/dockwatch/ci.yml?style=flat-square&label=CI%2FCD%20Pipeline)](https://github.com/robotnikz/dockwatch/actions/workflows/ci.yml)
+[![ghcr.io](https://img.shields.io/github/v/release/robotnikz/dockwatch?style=flat-square&label=ghcr.io)](https://github.com/robotnikz/dockwatch/pkgs/container/dockwatch)
+[![License](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+[![Docker Compose](https://img.shields.io/badge/docker-compose-2496ED?style=flat-square&logo=docker&logoColor=white)](https://docs.docker.com/compose/)
 
 *A modern, lightweight Docker Compose control surface originally vibe‑coded for personal homelab use, bridging the gap between existing tools.*
 
