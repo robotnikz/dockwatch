@@ -39,11 +39,7 @@ Real screenshots with sanitized placeholder data. No private hostnames, secrets,
 
 ### Stack Editor (Policies + Limits)
 
-![DockWatch Stack Editor Placeholder](docs/screenshots/stack-editor-placeholder.svg)
-
-### Live Compose Terminal
-
-![DockWatch Live Terminal Placeholder](docs/screenshots/live-terminal-placeholder.svg)
+![DockWatch Stack Editor](docs/screenshots/stack_editor.png)
 
 ---
 
