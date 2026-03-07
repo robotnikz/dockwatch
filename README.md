@@ -3,8 +3,8 @@
 # 🐳 DockWatch
 
 [![Release](https://img.shields.io/github/v/release/robotnikz/dockwatch?style=flat-square&color=blue)](https://github.com/robotnikz/dockwatch/releases)
-[![Docker Pulls](https://img.shields.io/docker/pulls/ghcr.io/robotnikz/dockwatch?style=flat-square)](https://github.com/robotnikz/dockwatch/pkgs/container/dockwatch)
-[![CodeQL](https://github.com/robotnikz/dockwatch/actions/workflows/codeql.yml/badge.svg)](https://github.com/robotnikz/dockwatch/actions/workflows/codeql.yml)
+[![Docker Build](https://img.shields.io/github/actions/workflow/status/robotnikz/dockwatch/docker-publish.yml?style=flat-square&label=Docker)](https://github.com/robotnikz/dockwatch/actions/workflows/docker-publish.yml)
+[![CI](https://img.shields.io/github/actions/workflow/status/robotnikz/dockwatch/ci.yml?style=flat-square&label=CI)](https://github.com/robotnikz/dockwatch/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 
 *A modern, lightweight Docker Compose control surface originally vibe‑coded for personal homelab use, bridging the gap between existing tools.*
