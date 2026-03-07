@@ -79,7 +79,7 @@ export async function deleteStack(name: string): Promise<void> {
 
 async function runCompose(name: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
   const dir = stackDir(name);
-  return execFileAsync('docker', ['compose', ...args], {
+  return execFileAsync('docker', ['compose', '--ansi', 'always', ...args], {
     cwd: dir,
     timeout: 120_000,
     env: { ...process.env, COMPOSE_PROJECT_NAME: name },
@@ -107,7 +107,7 @@ export async function composePull(name: string): Promise<string> {
 }
 
 export async function composeLogs(name: string, tail = 100): Promise<string> {
-  const result = await runCompose(name, ['logs', '--tail', String(tail), '--no-color']);
+  const result = await runCompose(name, ['logs', '--tail', String(tail)]);
   return result.stdout + result.stderr;
 }
 
