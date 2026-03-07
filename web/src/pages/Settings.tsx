@@ -80,8 +80,8 @@ export default function Settings() {
               <label className="mb-2 block text-sm font-medium text-dock-text">Webhook URL</label>
               <input
                 type="url"
-                value={data.discord_webhook_url || ''}
-                onChange={(e) => handleChange('discord_webhook_url', e.target.value)}
+                value={data.discord_webhook || ''}
+                onChange={(e) => handleChange('discord_webhook', e.target.value)}
                 placeholder="https://discord.com/api/webhooks/..."
                 className="w-full rounded-xl border border-dock-border bg-dock-bg/50 px-4 py-2.5 text-sm text-white focus:border-dock-accent outline-none transition"
               />
@@ -89,7 +89,7 @@ export default function Settings() {
                 If provided, DockWatch will send notifications about update availability to this channel.
               </p>
             </div>
-            {data.discord_webhook_url && (
+            {data.discord_webhook && (
               <button
                 type="button"
                 onClick={handleTest}
@@ -104,12 +104,27 @@ export default function Settings() {
 
         <div className="rounded-2xl border border-dock-border/50 bg-dock-card p-6">
           <h2 className="text-xl font-bold text-white mb-4">Update Checker</h2>
+          
+          <div className="mb-6">
+            <label className="mb-2 block text-sm font-medium text-dock-text">Excluded Containers / Images</label>
+            <textarea
+              value={data.update_exclusions || ''}
+              onChange={(e) => handleChange('update_exclusions', e.target.value)}
+              placeholder="e.g. linuxserver/mariadb, portainer (comma separated)"
+              rows={3}
+              className="w-full rounded-xl border border-dock-border bg-dock-bg/50 px-4 py-2.5 text-sm text-white focus:border-dock-accent outline-none font-mono transition"
+            />
+            <p className="mt-2 text-xs text-dock-muted">
+              Comma-separated list of image names or substrings to exclude from automatic update checks.
+            </p>
+          </div>
+
           <div>
             <label className="mb-2 block text-sm font-medium text-dock-text">Cron Schedule</label>
             <input
               type="text"
-              value={data.cron_schedule || ''}
-              onChange={(e) => handleChange('cron_schedule', e.target.value)}
+              value={data.check_cron || ''}
+              onChange={(e) => handleChange('check_cron', e.target.value)}
               placeholder="0 0 * * *"
               className="w-full rounded-xl border border-dock-border bg-dock-bg/50 px-4 py-2.5 text-sm text-white focus:border-dock-accent outline-none font-mono transition"
             />

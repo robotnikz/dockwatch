@@ -5,7 +5,7 @@ import { restartScheduler } from '../services/scheduler.js';
 
 const router = Router();
 
-const ALLOWED_KEYS = ['discord_webhook', 'discord_notify_actions', 'check_cron'];
+const ALLOWED_KEYS = ['discord_webhook', 'discord_notify_actions', 'check_cron', 'update_exclusions'];
 
 router.get('/', (_req: Request, res: Response) => {
   const settings = getAllSettings();

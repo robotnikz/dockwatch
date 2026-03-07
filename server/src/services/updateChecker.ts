@@ -1,5 +1,5 @@
 import { getStackImages, getLocalDigest } from './docker.js';
-import { setUpdateCache, getAllUpdateCache, getUpdateCache } from '../db.js';
+import { setUpdateCache, getAllUpdateCache, getUpdateCache, getSetting } from '../db.js';
 import { notifyUpdatesAvailable } from './discord.js';
 import { listStacks } from './docker.js';
 
@@ -89,9 +89,19 @@ export async function checkAllUpdates(): Promise<UpdateResult[]> {
   const stacks = await listStacks();
   const allImages = new Set<string>();
 
+  const exclusionsStr = (getSetting('update_exclusions') || '').toLowerCase();
+  const exclusions = exclusionsStr.split(',').map(s => s.trim()).filter(Boolean);
+
   for (const stack of stacks) {
     const images = await getStackImages(stack);
-    images.forEach(img => allImages.add(img));
+    images.forEach(img => {
+      const isExcluded = exclusions.some(ex => img.toLowerCase().includes(ex));
+      if (!isExcluded) {
+        allImages.add(img);
+      } else {
+        console.log(`Skipping update check for excluded image: ${img}`);
+      }
+    });
   }
 
   const results: UpdateResult[] = [];
