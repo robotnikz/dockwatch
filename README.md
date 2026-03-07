@@ -5,6 +5,8 @@
 [![Release](https://img.shields.io/github/v/release/robotnikz/dockwatch?style=flat-square&color=blue)](https://github.com/robotnikz/dockwatch/releases)
 [![Docker Build](https://img.shields.io/github/actions/workflow/status/robotnikz/dockwatch/docker-publish.yml?style=flat-square&label=Docker)](https://github.com/robotnikz/dockwatch/actions/workflows/docker-publish.yml)
 [![CI](https://img.shields.io/github/actions/workflow/status/robotnikz/dockwatch/ci.yml?style=flat-square&label=CI)](https://github.com/robotnikz/dockwatch/actions/workflows/ci.yml)
+[![CodeQL](https://img.shields.io/github/actions/workflow/status/robotnikz/dockwatch/codeql.yml?style=flat-square&label=CodeQL)](https://github.com/robotnikz/dockwatch/actions/workflows/codeql.yml)
+[![Security](https://img.shields.io/github/actions/workflow/status/robotnikz/dockwatch/security.yml?style=flat-square&label=Security)](https://github.com/robotnikz/dockwatch/actions/workflows/security.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 
 *A modern, lightweight Docker Compose control surface originally vibe‑coded for personal homelab use, bridging the gap between existing tools.*
@@ -24,6 +26,24 @@
 * 💻 **Real-Time Live Console** — Watch your Docker Compose process outputs and errors stream live directly inside a dockge-like overlay modal.
 * 🔔 **Discord Notifications** — Get instantly notified about available updates, automated checks, and stack actions via Discord webhooks.
 * 🪄 **Docker Run Converter** — Turn any `docker run` shell command instantly into a deployable `compose.yaml`.
+
+---
+
+## 🖼️ Screenshots
+
+Real screenshots with sanitized placeholder data. No private hostnames, secrets, or internal IPs are shown.
+
+### Dashboard
+
+![DockWatch Dashboard Placeholder](docs/screenshots/dashboard-placeholder.svg)
+
+### Stack Editor (Policies + Limits)
+
+![DockWatch Stack Editor Placeholder](docs/screenshots/stack-editor-placeholder.svg)
+
+### Live Compose Terminal
+
+![DockWatch Live Terminal Placeholder](docs/screenshots/live-terminal-placeholder.svg)
 
 ---
 

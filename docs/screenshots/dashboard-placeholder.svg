@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-label="DockWatch Dashboard Placeholder">
+  <rect width="1280" height="720" fill="#0b1020"/>
+  <rect x="40" y="40" width="1200" height="80" rx="16" fill="#16213a"/>
+  <rect x="40" y="140" width="580" height="240" rx="16" fill="#1c2744"/>
+  <rect x="660" y="140" width="580" height="240" rx="16" fill="#1c2744"/>
+  <rect x="40" y="400" width="1200" height="280" rx="16" fill="#141d34"/>
+  <text x="64" y="90" fill="#8ab4ff" font-family="monospace" font-size="28">DockWatch Dashboard (Placeholder Data)</text>
+  <text x="64" y="200" fill="#c8d6ff" font-family="monospace" font-size="18">Stacks: 8 | Running: 6 | Updates: 4</text>
+  <text x="64" y="440" fill="#9fb3e8" font-family="monospace" font-size="18">Container stats chart and tables intentionally redacted</text>
+</svg>
