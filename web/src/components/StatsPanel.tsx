@@ -4,7 +4,8 @@ import { getStats, getStacks, getStackResources, updateServiceResources, type Co
 type ContainerUpdateMeta = {
   stack: string;
   service: string;
-  excluded: boolean;
+  autoUpdateExcluded: boolean;
+  checkExcluded: boolean;
 };
 
 export default function StatsPanel() {
@@ -42,7 +43,7 @@ export default function StatsPanel() {
             const resources = await getStackResources(stack.name);
             return { stack, resources };
           } catch {
-            return { stack, resources: {} as Record<string, { update_excluded?: boolean }> };
+            return { stack, resources: {} as Record<string, { update_excluded?: boolean; update_check_excluded?: boolean }> };
           }
         })
       );
@@ -55,7 +56,8 @@ export default function StatsPanel() {
           next[containerName] = {
             stack: stack.name,
             service: svc.Service,
-            excluded: Boolean(resources[svc.Service]?.update_excluded),
+            autoUpdateExcluded: Boolean(resources[svc.Service]?.update_excluded),
+            checkExcluded: Boolean(resources[svc.Service]?.update_check_excluded),
           };
         }
       }
@@ -81,27 +83,35 @@ export default function StatsPanel() {
     return () => clearInterval(id);
   }, [refreshUpdateMeta]);
 
-  const toggleUpdateExclusion = async (containerName: string) => {
+  const togglePolicy = async (containerName: string, policy: 'check' | 'auto') => {
     const meta = updateMeta[containerName];
     if (!meta) return;
-    const nextExcluded = !meta.excluded;
+    const key = `${containerName}:${policy}`;
+    const nextMeta = {
+      ...meta,
+      checkExcluded: policy === 'check' ? !meta.checkExcluded : meta.checkExcluded,
+      autoUpdateExcluded: policy === 'auto' ? !meta.autoUpdateExcluded : meta.autoUpdateExcluded,
+    };
 
-    setToggling((prev) => ({ ...prev, [containerName]: true }));
+    setToggling((prev) => ({ ...prev, [key]: true }));
     setUpdateMeta((prev) => ({
       ...prev,
-      [containerName]: { ...meta, excluded: nextExcluded },
+      [containerName]: nextMeta,
     }));
 
     try {
-      await updateServiceResources(meta.stack, meta.service, { update_excluded: nextExcluded });
+      await updateServiceResources(meta.stack, meta.service, {
+        update_excluded: nextMeta.autoUpdateExcluded,
+        update_check_excluded: nextMeta.checkExcluded,
+      });
     } catch {
       // Roll back optimistic state on error.
       setUpdateMeta((prev) => ({
         ...prev,
-        [containerName]: { ...meta, excluded: meta.excluded },
+        [containerName]: meta,
       }));
     } finally {
-      setToggling((prev) => ({ ...prev, [containerName]: false }));
+      setToggling((prev) => ({ ...prev, [key]: false }));
     }
   };
 
@@ -232,7 +242,8 @@ export default function StatsPanel() {
                   <th className="hidden px-4 py-3 text-right font-medium lg:table-cell cursor-pointer group hover:text-dock-accent transition select-none" onClick={() => handleSort('net_io')}><SortIcon col="net_io"/> Net I/O</th>
                   <th className="hidden px-4 py-3 text-right font-medium lg:table-cell cursor-pointer group hover:text-dock-accent transition select-none" onClick={() => handleSort('block_io')}><SortIcon col="block_io"/> Block I/O</th>
                   <th className="hidden px-4 py-3 text-right font-medium md:table-cell cursor-pointer group hover:text-dock-accent transition select-none" onClick={() => handleSort('pids')}><SortIcon col="pids"/> PIDs</th>
-                  <th className="px-4 py-3 text-right font-medium">Updates</th>
+                  <th className="px-4 py-3 text-right font-medium">Check</th>
+                  <th className="px-4 py-3 text-right font-medium">Auto</th>
                 </tr>
               </thead>
               <tbody>
@@ -265,13 +276,30 @@ export default function StatsPanel() {
                       {updateMeta[container.name] ? (
                         <button
                           type="button"
-                          onClick={() => toggleUpdateExclusion(container.name)}
-                          disabled={Boolean(toggling[container.name])}
+                          onClick={() => togglePolicy(container.name, 'check')}
+                          disabled={Boolean(toggling[`${container.name}:check`])}
                           className="inline-flex items-center justify-end disabled:opacity-60"
-                          title={updateMeta[container.name].excluded ? 'Container ist von Updates ausgeschlossen' : 'Container wird bei Updates berücksichtigt'}
+                          title={updateMeta[container.name].checkExcluded ? 'Container wird bei Check for Updates ignoriert' : 'Container wird bei Check for Updates berücksichtigt'}
                         >
-                          <span className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${updateMeta[container.name].excluded ? 'bg-dock-border/70' : 'bg-dock-accent/80'}`}>
-                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${updateMeta[container.name].excluded ? 'translate-x-1' : 'translate-x-6'}`} />
+                          <span className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${updateMeta[container.name].checkExcluded ? 'bg-dock-border/70' : 'bg-dock-accent/80'}`}>
+                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${updateMeta[container.name].checkExcluded ? 'translate-x-1' : 'translate-x-6'}`} />
+                          </span>
+                        </button>
+                      ) : (
+                        <span className="text-dock-muted/70">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {updateMeta[container.name] ? (
+                        <button
+                          type="button"
+                          onClick={() => togglePolicy(container.name, 'auto')}
+                          disabled={Boolean(toggling[`${container.name}:auto`])}
+                          className="inline-flex items-center justify-end disabled:opacity-60"
+                          title={updateMeta[container.name].autoUpdateExcluded ? 'Container wird beim Update-Run nicht automatisch aktualisiert' : 'Container wird beim Update-Run automatisch berücksichtigt'}
+                        >
+                          <span className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${updateMeta[container.name].autoUpdateExcluded ? 'bg-dock-border/70' : 'bg-dock-accent/80'}`}>
+                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${updateMeta[container.name].autoUpdateExcluded ? 'translate-x-1' : 'translate-x-6'}`} />
                           </span>
                         </button>
                       ) : (

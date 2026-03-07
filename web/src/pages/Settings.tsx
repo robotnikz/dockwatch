@@ -115,7 +115,7 @@ export default function Settings() {
               className="w-full rounded-xl border border-dock-border bg-dock-bg/50 px-4 py-2.5 text-sm text-white focus:border-dock-accent outline-none font-mono transition"
             />
             <p className="mt-2 text-xs text-dock-muted">
-              Comma-separated list of image names or substrings to exclude from automatic update checks.
+              Optional global filter: comma-separated image names/substrings to exclude from checks. Per-container check/auto behavior can be toggled directly in Container Stats.
             </p>
           </div>
 

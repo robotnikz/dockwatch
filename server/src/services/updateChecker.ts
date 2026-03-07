@@ -2,6 +2,8 @@ import { getStackImages, getLocalDigest } from './docker.js';
 import { setUpdateCache, getAllUpdateCache, getUpdateCache, getSetting } from '../db.js';
 import { notifyUpdatesAvailable } from './discord.js';
 import { listStacks } from './docker.js';
+import { getComposeContent } from './docker.js';
+import { parse } from 'yaml';
 
 interface RegistryToken {
   token: string;
@@ -93,15 +95,46 @@ export async function checkAllUpdates(): Promise<UpdateResult[]> {
   const exclusions = exclusionsStr.split(',').map(s => s.trim()).filter(Boolean);
 
   for (const stack of stacks) {
-    const images = await getStackImages(stack);
-    images.forEach(img => {
-      const isExcluded = exclusions.some(ex => img.toLowerCase().includes(ex));
-      if (!isExcluded) {
-        allImages.add(img);
-      } else {
-        console.log(`Skipping update check for excluded image: ${img}`);
+    try {
+      const compose = await getComposeContent(stack);
+      const doc = parse(compose) as any;
+      const services = doc?.services || {};
+      for (const [serviceName, serviceConfig] of Object.entries(services)) {
+        const service = serviceConfig as any;
+        const image = service?.image;
+        if (!image || typeof image !== 'string') continue;
+
+        const labels = service?.labels;
+        const checkExcluded = Array.isArray(labels)
+          ? labels.some((l: unknown) => typeof l === 'string' && l.startsWith('dockwatch.update.check.exclude=') && l.split('=')[1]?.trim() === 'true')
+          : (labels && typeof labels === 'object'
+            ? String((labels as Record<string, unknown>)['dockwatch.update.check.exclude']).trim().toLowerCase() === 'true'
+            : false);
+
+        if (checkExcluded) {
+          console.log(`Skipping update check for excluded service: ${stack}/${String(serviceName)}`);
+          continue;
+        }
+
+        const isExcluded = exclusions.some(ex => image.toLowerCase().includes(ex));
+        if (!isExcluded) {
+          allImages.add(image);
+        } else {
+          console.log(`Skipping update check for excluded image: ${image}`);
+        }
       }
-    });
+    } catch {
+      // Fallback to legacy image discovery if compose parsing fails.
+      const images = await getStackImages(stack);
+      images.forEach(img => {
+        const isExcluded = exclusions.some(ex => img.toLowerCase().includes(ex));
+        if (!isExcluded) {
+          allImages.add(img);
+        } else {
+          console.log(`Skipping update check for excluded image: ${img}`);
+        }
+      });
+    }
   }
 
   const results: UpdateResult[] = [];
