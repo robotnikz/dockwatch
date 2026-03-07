@@ -21,10 +21,10 @@ A Docker Compose control surface with live runtime stats, update checks, command
 mkdir -p /opt/stacks /opt/dockwatch
 cd /opt/dockwatch
 
-# Clone the repo
-git clone https://github.com/robotnikz/dockwatch.git .
+# Download the docker-compose.yml
+curl -o docker-compose.yml https://raw.githubusercontent.com/robotnikz/dockwatch/main/docker-compose.yml
 
-# Start with Docker Compose
+# Start DockWatch
 docker compose up -d
 ```
 
@@ -60,7 +60,7 @@ When you edit resources from the UI, DockWatch:
 ```yaml
 services:
   dockwatch:
-    build: .
+    image: ghcr.io/robotnikz/dockwatch:latest
     container_name: dockwatch
     restart: unless-stopped
     ports:

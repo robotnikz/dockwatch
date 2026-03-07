@@ -1,7 +1,6 @@
 services:
   dockwatch:
-    build: .
-    # image: dockwatch:latest  # uncomment when using pre-built image
+    image: ghcr.io/robotnikz/dockwatch:latest
     container_name: dockwatch
     restart: unless-stopped
     ports:
