@@ -1,61 +1,64 @@
+<div align="center">
+
 # 🐳 DockWatch
 
-A Docker Compose control surface with live runtime stats, update checks, command conversion, and Discord notifications.
+[![Release](https://img.shields.io/github/v/release/robotnikz/dockwatch?style=flat-square&color=blue)](https://github.com/robotnikz/dockwatch/releases)
+[![Docker Pulls](https://img.shields.io/docker/pulls/ghcr.io/robotnikz/dockwatch?style=flat-square)](https://github.com/robotnikz/dockwatch/pkgs/container/dockwatch)
+[![CodeQL](https://github.com/robotnikz/dockwatch/actions/workflows/codeql.yml/badge.svg)](https://github.com/robotnikz/dockwatch/actions/workflows/codeql.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 
-## Features
+*A modern, lightweight Docker Compose control surface originally vibe‑coded for personal homelab use, bridging the gap between existing tools.*
 
-- **Stack Management** — Create, edit, start, stop, and delete Docker Compose stacks via web UI
-- **Live Runtime Dashboard** — View host-level Docker info plus live per-container CPU, memory, network, block I/O, and PID stats
-- **Update Checker** — Automatically detects when container images have new versions available
-- **One-Click Updates** — Pull latest images and recreate containers with a single click
-- **Discord Notifications** — Get notified about available updates and stack actions via Discord webhook
-- **Scheduled Checks** — Configurable cron schedule for automatic update checking
-- **Container Logs** — View container logs directly in the UI
-- **Docker Run Converter** — Turn a `docker run` command into a `compose.yaml` starter
-- **Resource Controls** — Edit CPU and RAM limits/reservations from the GUI without hand-editing YAML
+</div>
 
-## Quick Start
+---
+
+> **Note**: DockWatch was built primarily as a private project because I always felt a few crucial features were missing from other homelab tools. It was "vibe-coded" to fit my exact needs, but is now heavily polished and available for anyone facing the same pain points.
+
+## ✨ Features at a Glance
+
+* 📦 **Stack Management** — Create, edit, start, stop, and delete Docker Compose stacks via a clean web UI.
+* 📊 **Live Runtime Dashboard** — Real-time telemetry for CPU, Memory, Network, Block I/O, and PIDs directly on the dashboard.
+* 🔄 **Smart Auto-Updates** — Detects new container image versions securely. Pull and recreate with a single click. Exclude specific containers from updates easily.
+* 🔔 **Discord Notifications** — Get instantly notified about available updates, automated checks, and stack actions via Discord webhooks.
+* 🪄 **Docker Run Converter** — Turn any `docker run` shell command instantly into a deployable `compose.yaml`.
+* 🎛️ **Resource Limits GUI** — Easy CPU and RAM limits/reservations straight from the UI without handwriting YAML config limits.
+
+---
+
+## 🆚 Honest Comparison
+
+Why build another Docker interface? Here is how DockWatch fits into the existing ecosystem:
+
+| Feature / Aspect | 🐳 DockWatch | 🗂️ Dockge | 🚢 Portainer | 🦭 Podman |
+| :--- | :--- | :--- | :--- | :--- |
+| **Primary Focus** | Homelab Compose management & seamless updates | Minimalist homelab Compose stack management | Enterprise container, Swarm & K8s management | Daemonless, rootless containers & Pods |
+| **Auto-Updating** | Built-in (Cron + 1-Click + Discord alerts) | Requires external tools (e.g., Watchtower) | Paid features or external tooling required | Native via `systemd` auto-updates |
+| **Resource Limits** | Native GUI controls for CPU & RAM | Hand-write YAML | Heavy native GUI | Podman Desktop GUI / CLI |
+| **Architecture** | React 19 + Tailwind + Node.js (Vibe-coded) | Vue.js + Node.js (Robust vanilla) | AngularJS + Go (Heavy) | Go (CLI) + Desktop App |
+| **Ease of Use** | Extremely High | Extremely High | Moderate (cluttered UI) | Moderate (CLI focused) |
+
+---
+
+## 🚀 Quick Start
+
+DockWatch utilizes the exact same directory layout as **Dockge**, making migration entirely seamless. 
 
 ```bash
-# Create directories (same structure as Dockge for easy migration)
+# Create directories
 mkdir -p /opt/stacks /opt/dockwatch
 cd /opt/dockwatch
 
-# Download the docker-compose.yml
+# Download the default compose file
 curl -o docker-compose.yml https://raw.githubusercontent.com/robotnikz/dockwatch/main/docker-compose.yml
 
-# Start DockWatch
+# Spin up DockWatch
 docker compose up -d
 ```
 
 Open **http://localhost:3000** in your browser.
 
-## What DockWatch Writes
-
-DockWatch stores stacks under the same layout used by Dockge:
-
-- Stacks live in `/opt/stacks/<stack-name>/`
-- New stacks are written as `/opt/stacks/<stack-name>/compose.yaml`
-- Existing `docker-compose.yml` files are still read for compatibility
-
-When you edit resources from the UI, DockWatch:
-
-- Detects existing `deploy.resources.*` values
-- Detects existing service-level Compose keys such as `cpus`, `mem_limit`, and `mem_reservation`
-- Writes a canonical `deploy.resources` block
-- Mirrors compatible values back to `cpus`, `mem_limit`, and `mem_reservation` for broader Docker Compose compatibility
-
-## Configuration
-
-### Environment Variables
-
-| Variable | Default | Description |
-|---|---|---|
-| `PORT` | `3000` | Web UI port |
-| `DOCKWATCH_DATA` | `/app/data` | Database storage path |
-| `DOCKWATCH_STACKS` | `/opt/stacks` | Compose stacks directory |
-
-### Docker Compose
+## ⚙️ Configuration (Compose)
 
 ```yaml
 services:
@@ -68,109 +71,42 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./data:/app/data
-      # ⚠️ Stacks path MUST be identical on host and container
+      # ⚠️ Stacks path MUST be identical on host and container!
       - /opt/stacks:/opt/stacks
     environment:
       - DOCKWATCH_STACKS=/opt/stacks
+      - PORT=3000
 ```
 
-### Discord Webhook
+### Environment Variables
 
-1. Go to **Settings** in the DockWatch UI
-2. Paste your Discord webhook URL
-3. Click **Save Settings**
-4. Click **Send Test Notification** to verify
-
-### Update Schedule
-
-Default: every 6 hours (`0 */6 * * *`).  
-Change it in **Settings** using standard cron syntax.
-
-## Main UI Areas
-
-### Dashboard
-
-- Stack overview with running, degraded, and stopped states
-- Live Docker host telemetry and container stats
-- Fast actions for start, stop, update, logs, and resources
-
-### Converter
-
-- Paste a `docker run ...` command
-- Convert it to Compose YAML
-- Copy the result or send it directly into the stack editor
-
-### Resource Management
-
-- Edit CPU limits and reservations
-- Edit memory limits and reservations
-- Preview the exact YAML DockWatch will write
-- Restart the stack after saving to apply changes
-
-### Settings
-
-- Configure Discord webhook delivery
-- Enable or disable action notifications
-- Set the update-check cron schedule
-
-## Architecture
-
-```
-dockwatch/
-├── server/          # Express.js backend (TypeScript)
-│   └── src/
-│       ├── index.ts           # Server entry
-│       ├── db.ts              # SQLite database
-│       ├── routes/            # API endpoints
-│       └── services/          # Docker, update checker, Discord, scheduler, stats, resources, converter
-├── web/             # React frontend (Vite + Tailwind)
-│   └── src/
-│       ├── App.tsx            # Router & app shell
-│       ├── pages/             # Dashboard, StackEditor, Convert, Settings
-│       └── components/        # StackCard, StatsPanel, ResourceModal, LogModal, DockerRunConverter
-├── Dockerfile       # Multi-stage build
-└── docker-compose.yml
-```
-
-## Migrating from Dockge
-
-DockWatch uses the same directory structure as Dockge — migration is straightforward:
-
-1. Your existing stacks in `/opt/stacks/` are automatically picked up
-2. DockWatch reads both `compose.yaml` and `docker-compose.yml` (new stacks use `compose.yaml`)
-3. Stop Dockge, start DockWatch — your stacks appear immediately
-
-```bash
-# Stop Dockge
-cd /opt/dockge && docker compose down
-
-# Start DockWatch (using the same /opt/stacks directory)
-cd /opt/dockwatch && docker compose up -d
-```
-
-## API
-
-| Method | Endpoint | Description |
+| Variable | Default | Description |
 |---|---|---|
-| `GET` | `/api/stacks` | List all stacks with status |
-| `GET` | `/api/stacks/:name` | Get stack compose content |
-| `PUT` | `/api/stacks/:name` | Create/update stack |
-| `DELETE` | `/api/stacks/:name` | Delete stack |
-| `POST` | `/api/stacks/:name/up` | Start stack |
-| `POST` | `/api/stacks/:name/down` | Stop stack |
-| `POST` | `/api/stacks/:name/restart` | Restart stack |
-| `POST` | `/api/stacks/:name/update` | Pull & recreate |
-| `GET` | `/api/stacks/:name/logs` | Get logs |
-| `GET` | `/api/stats` | Get host info plus live container stats |
-| `POST` | `/api/convert` | Convert `docker run` command to Compose YAML |
-| `GET` | `/api/resources/:name` | Get resource config for all services in a stack |
-| `PUT` | `/api/resources/:name/:service` | Update resource config for one service |
-| `GET` | `/api/updates` | Cached update status |
-| `POST` | `/api/updates/check` | Trigger update check |
-| `GET` | `/api/settings` | Get settings |
-| `PUT` | `/api/settings` | Update settings |
-| `POST` | `/api/settings/test-webhook` | Test Discord webhook |
+| `PORT` | `3000` | Web UI port |
+| `DOCKWATCH_DATA` | `/app/data` | Database storage path |
+| `DOCKWATCH_STACKS` | `/opt/stacks` | Compose stacks directory |
 
-## License
+---
 
-MIT
+## 🔒 Security & Deployment Recommendations
+
+DockWatch undergoes routine automated security audits, including CodeQL scanning, dependabot vulnerability assessments, and strict linting. 
+
+**However, mounting the Docker socket (`/var/run/docker.sock`) grants root-level execution capabilities to the container.** 
+
+**Best Practices:**
+1. **Never expose DockWatch directly to the public internet.**
+2. Restrict access to local networks (LAN) or secure VPN overlays like **Tailscale**, **WireGuard**, or **Zerotier**.
+3. If remote access is strictly required, use an authenticating reverse proxy (like Cloudflare Access, Authelia, or Authentik) with Multi-Factor Authentication.
+
+---
+
+## 🏗️ Architecture Stack
+
+- **Backend:** Node.js, Express, `better-sqlite3`, TypeScript, Docker CLI proxying.
+- **Frontend:** React 19, Vite, Tailwind CSS, `ansi_up` for proper terminal stream rendering.
+- **CI/CD:** GitHub Actions with `semantic-release` directly deploying to GitHub Container Registry (GHCR).
+
+## 📄 License
+
+This project is licensed under the [MIT License](LICENSE).
