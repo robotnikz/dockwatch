@@ -1,5 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getStats, type ContainerStats, type HostInfo } from '../api';
+import { getStats, getStacks, getStackResources, updateServiceResources, type ContainerStats, type HostInfo } from '../api';
+
+type ContainerUpdateMeta = {
+  stack: string;
+  service: string;
+  excluded: boolean;
+};
 
 export default function StatsPanel() {
   const [host, setHost] = useState<HostInfo | null>(null);
@@ -9,6 +15,8 @@ export default function StatsPanel() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [updateMeta, setUpdateMeta] = useState<Record<string, ContainerUpdateMeta>>({});
+  const [toggling, setToggling] = useState<Record<string, boolean>>({});
 
   const refresh = useCallback(async () => {
     try {
@@ -25,13 +33,77 @@ export default function StatsPanel() {
     }
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  const refreshUpdateMeta = useCallback(async () => {
+    try {
+      const stacks = await getStacks();
+      const entries = await Promise.all(
+        stacks.map(async (stack) => {
+          try {
+            const resources = await getStackResources(stack.name);
+            return { stack, resources };
+          } catch {
+            return { stack, resources: {} as Record<string, { update_excluded?: boolean }> };
+          }
+        })
+      );
+
+      const next: Record<string, ContainerUpdateMeta> = {};
+      for (const { stack, resources } of entries) {
+        for (const svc of stack.services) {
+          const containerName = String(svc.Name || '').replace(/^\//, '');
+          if (!containerName) continue;
+          next[containerName] = {
+            stack: stack.name,
+            service: svc.Service,
+            excluded: Boolean(resources[svc.Service]?.update_excluded),
+          };
+        }
+      }
+      setUpdateMeta(next);
+    } catch {
+      // Non-critical metadata; table should still render stats if this fails.
+    }
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    refreshUpdateMeta();
+  }, [refresh, refreshUpdateMeta]);
 
   // Live refresh every 5 seconds
   useEffect(() => {
     const id = setInterval(refresh, 5_000);
     return () => clearInterval(id);
   }, [refresh]);
+
+  useEffect(() => {
+    const id = setInterval(refreshUpdateMeta, 20_000);
+    return () => clearInterval(id);
+  }, [refreshUpdateMeta]);
+
+  const toggleUpdateExclusion = async (containerName: string) => {
+    const meta = updateMeta[containerName];
+    if (!meta) return;
+    const nextExcluded = !meta.excluded;
+
+    setToggling((prev) => ({ ...prev, [containerName]: true }));
+    setUpdateMeta((prev) => ({
+      ...prev,
+      [containerName]: { ...meta, excluded: nextExcluded },
+    }));
+
+    try {
+      await updateServiceResources(meta.stack, meta.service, { update_excluded: nextExcluded });
+    } catch {
+      // Roll back optimistic state on error.
+      setUpdateMeta((prev) => ({
+        ...prev,
+        [containerName]: { ...meta, excluded: meta.excluded },
+      }));
+    } finally {
+      setToggling((prev) => ({ ...prev, [containerName]: false }));
+    }
+  };
 
   if (loading) {
     return (
@@ -160,6 +232,7 @@ export default function StatsPanel() {
                   <th className="hidden px-4 py-3 text-right font-medium lg:table-cell cursor-pointer group hover:text-dock-accent transition select-none" onClick={() => handleSort('net_io')}><SortIcon col="net_io"/> Net I/O</th>
                   <th className="hidden px-4 py-3 text-right font-medium lg:table-cell cursor-pointer group hover:text-dock-accent transition select-none" onClick={() => handleSort('block_io')}><SortIcon col="block_io"/> Block I/O</th>
                   <th className="hidden px-4 py-3 text-right font-medium md:table-cell cursor-pointer group hover:text-dock-accent transition select-none" onClick={() => handleSort('pids')}><SortIcon col="pids"/> PIDs</th>
+                  <th className="px-4 py-3 text-right font-medium">Updates</th>
                 </tr>
               </thead>
               <tbody>
@@ -188,6 +261,23 @@ export default function StatsPanel() {
                     <td className="hidden px-4 py-3 text-right text-dock-muted lg:table-cell">{container.net_io}</td>
                     <td className="hidden px-4 py-3 text-right text-dock-muted lg:table-cell">{container.block_io}</td>
                     <td className="hidden px-4 py-3 text-right text-dock-muted md:table-cell">{container.pids}</td>
+                    <td className="px-4 py-3 text-right">
+                      {updateMeta[container.name] ? (
+                        <button
+                          type="button"
+                          onClick={() => toggleUpdateExclusion(container.name)}
+                          disabled={Boolean(toggling[container.name])}
+                          className="inline-flex items-center justify-end disabled:opacity-60"
+                          title={updateMeta[container.name].excluded ? 'Container ist von Updates ausgeschlossen' : 'Container wird bei Updates berücksichtigt'}
+                        >
+                          <span className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${updateMeta[container.name].excluded ? 'bg-dock-border/70' : 'bg-dock-accent/80'}`}>
+                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${updateMeta[container.name].excluded ? 'translate-x-1' : 'translate-x-6'}`} />
+                          </span>
+                        </button>
+                      ) : (
+                        <span className="text-dock-muted/70">-</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>

@@ -107,6 +107,7 @@ export interface ResourceConfig {
   limits_memory?: string;
   reservations_cpus?: string;
   reservations_memory?: string;
+  update_excluded?: boolean;
 }
 
 export const getStackResources = (name: string) =>

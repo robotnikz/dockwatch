@@ -6,6 +6,7 @@ export interface ResourceConfig {
   limits_memory?: string;
   reservations_cpus?: string;
   reservations_memory?: string;
+  update_excluded?: boolean;
 }
 
 type ComposeService = Record<string, any>;
@@ -52,7 +53,53 @@ function normalizeConfig(config: ResourceConfig): ResourceConfig {
     limits_memory: normalizeValue(config.limits_memory),
     reservations_cpus: normalizeValue(config.reservations_cpus),
     reservations_memory: normalizeValue(config.reservations_memory),
+    update_excluded: Boolean(config.update_excluded),
   };
+}
+
+function isUpdateExcluded(labels: unknown): boolean {
+  if (!labels) return false;
+  if (Array.isArray(labels)) {
+    return labels.some((entry) => {
+      if (typeof entry !== 'string') return false;
+      const [key, value] = entry.split('=');
+      return key === 'dockwatch.update.exclude' && String(value).trim().toLowerCase() === 'true';
+    });
+  }
+  if (typeof labels === 'object') {
+    const value = (labels as Record<string, unknown>)['dockwatch.update.exclude'];
+    return String(value).trim().toLowerCase() === 'true';
+  }
+  return false;
+}
+
+function setUpdateExcludedLabel(service: ComposeService, excluded: boolean): void {
+  const labels = service.labels;
+  const key = 'dockwatch.update.exclude';
+
+  if (Array.isArray(labels)) {
+    const filtered = labels.filter((entry: unknown) => {
+      return !(typeof entry === 'string' && entry.startsWith(`${key}=`));
+    });
+    if (excluded) filtered.push(`${key}=true`);
+    if (filtered.length > 0) service.labels = filtered;
+    else delete service.labels;
+    return;
+  }
+
+  if (labels && typeof labels === 'object') {
+    const mapLabels = labels as Record<string, unknown>;
+    if (excluded) mapLabels[key] = 'true';
+    else delete mapLabels[key];
+    if (Object.keys(mapLabels).length === 0) delete service.labels;
+    return;
+  }
+
+  if (excluded) {
+    service.labels = { [key]: 'true' };
+  } else {
+    delete service.labels;
+  }
 }
 
 /** Get current resource config for a specific service in a stack */
@@ -71,6 +118,7 @@ export function getResourcesFromYaml(yamlContent: string, serviceName: string): 
     limits_memory: firstValue(limits.memory, service.mem_limit),
     reservations_cpus: firstValue(reservations.cpus),
     reservations_memory: firstValue(reservations.memory, service.mem_reservation),
+    update_excluded: isUpdateExcluded(service.labels),
   };
 }
 
@@ -79,6 +127,9 @@ export function setResourcesInYaml(yamlContent: string, serviceName: string, con
   const doc = parse(yamlContent);
   const service = getService(doc, serviceName);
   const normalized = normalizeConfig(config);
+
+  // Update-exclusion is represented as compose label.
+  setUpdateExcludedLabel(service, Boolean(normalized.update_excluded));
 
   // Build the deploy.resources structure
   if (!service.deploy) service.deploy = {};
