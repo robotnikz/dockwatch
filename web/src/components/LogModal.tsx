@@ -12,20 +12,26 @@ export default function LogModal({ name, output, onClose }: Props) {
   
   useEffect(() => {
     const ansi_up = new AnsiUp();
-    // Use classes false = inline styling for colors, which works standalone
     ansi_up.use_classes = false;
+
+    // Sometimes Docker Compose output over child_process loses the actual ESC char (\x1b) 
+    // and just leaves the bracket if not careful, OR ansi_up doesn't like docker compose prefix.
+    // Docker compose with --ansi always sends actual \x1b.
+    let raw = output || 'No logs available';
     
-    // We want the `<pre>` tag to define the physical layout.
-    // If output has \n, ansi_to_html replaces them with <br> BY DEFAULT if we don't handle it,
-    // actually default is no <br> conversion but let's be explicit, we just want standard conversion.
-    const html = ansi_up.ansi_to_html(output || 'No logs available');
+    // Fix unicode escapes if they got mangled over JSON
+    const fixedOut = raw.replace(/\\u001b/g, '\x1b')
+                       .replace(/\\x1b/g, '\x1b')
+                       .replace(//g, '\x1b');
+
+    const html = ansi_up.ansi_to_html(fixedOut);
     setHtmlContent(html);
   }, [output]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/72 p-4 backdrop-blur-md" onClick={onClose}>
       <div
-        className="flex max-h-[84vh] w-full max-w-6xl flex-col overflow-hidden rounded-[28px] border border-dock-border/70 bg-dock-card shadow-dock"
+        className="flex max-h-[85vh] w-full max-w-[90vw] flex-col overflow-hidden rounded-[28px] border border-dock-border/70 bg-dock-card shadow-dock"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-dock-border/70 px-5 py-4">
@@ -42,8 +48,9 @@ export default function LogModal({ name, output, onClose }: Props) {
         </div>
         <div className="flex-1 overflow-auto bg-dock-bg/38 p-5">
           <pre 
-            className="log-output rounded-xl border border-dock-border/60 bg-[#0c0d10] p-4 text-xs text-[#e2e8f0] overflow-x-auto whitespace-pre font-mono leading-relaxed"
+            className="log-output rounded-xl border border-dock-border/60 bg-[#0c0d10] p-4 text-xs text-[#e2e8f0] overflow-x-auto whitespace-pre font-mono leading-relaxed max-w-full"
             dangerouslySetInnerHTML={{ __html: htmlContent }}
+            style={{ tabSize: 4 }}
           />
         </div>
       </div>
