@@ -175,6 +175,35 @@ export default function StackEditor() {
 
   return (
     <div className="space-y-6 max-w-[1400px] mx-auto">
+      {streamModal.show && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="bg-[#0c0d12] w-full max-w-4xl p-6 rounded-[1.25rem] border border-dock-border shadow-2xl flex flex-col h-[80vh]">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-medium text-white flex items-center gap-3">
+                {actionLoading && <div className="h-4 w-4 rounded-full border-2 border-dock-accent border-t-transparent animate-spin"/>}
+                {streamModal.title}
+              </h2>
+            </div>
+            
+            <div className="flex-1 bg-black rounded-xl p-4 overflow-y-auto font-mono text-sm text-gray-300 relative border border-dock-border/50">
+              <div className="whitespace-pre-wrap break-all" dangerouslySetInnerHTML={{ __html: ansiUp.ansi_to_html(streamModal.logs || 'Verbinde...') }}></div>
+              <div ref={streamEndRef} />
+            </div>
+            
+            {!actionLoading && (
+              <div className="mt-4 flex justify-end">
+                <button
+                  onClick={() => setStreamModal({ show: false, logs: '', title: '' })}
+                  className="bg-dock-panel hover:bg-dock-border text-white px-6 py-2 rounded-xl transition font-medium"
+                >
+                  Schließen
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Header area */}
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-3">
