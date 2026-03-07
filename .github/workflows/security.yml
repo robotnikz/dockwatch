@@ -53,15 +53,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Prepare Trivy cache
+        run: mkdir -p "$HOME/.cache/trivy"
+
       - name: Trivy filesystem scan (SARIF)
-        uses: aquasecurity/trivy-action@0.34.1
-        with:
-          scan-type: fs
-          scan-ref: .
-          format: sarif
-          output: trivy.sarif
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
+        run: |
+          docker run --rm \
+            -v "$PWD":/src \
+            -v "$HOME/.cache/trivy":/root/.cache/trivy \
+            aquasec/trivy:0.57.1 fs /src \
+            --format sarif \
+            --output /src/trivy.sarif \
+            --severity CRITICAL,HIGH \
+            --ignore-unfixed
 
       - name: Upload Trivy SARIF
         uses: github/codeql-action/upload-sarif@v4
