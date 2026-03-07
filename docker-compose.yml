@@ -1,0 +1,18 @@
+services:
+  dockwatch:
+    build: .
+    # image: dockwatch:latest  # uncomment when using pre-built image
+    container_name: dockwatch
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./data:/app/data
+      # ⚠️ Stacks path MUST be identical on host and container
+      # ⚠️ This is required so docker compose resolves paths correctly
+      - /opt/stacks:/opt/stacks
+    environment:
+      - PORT=3000
+      - DOCKWATCH_DATA=/app/data
+      - DOCKWATCH_STACKS=/opt/stacks

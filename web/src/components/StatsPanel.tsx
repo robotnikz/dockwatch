@@ -1,0 +1,165 @@
+import { useState, useEffect, useCallback } from 'react';
+import { getStats, type ContainerStats, type HostInfo } from '../api';
+
+export default function StatsPanel() {
+  const [host, setHost] = useState<HostInfo | null>(null);
+  const [containers, setContainers] = useState<ContainerStats[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const data = await getStats();
+      setHost(data.host);
+      setContainers(data.containers);
+      setError(null);
+      setLastUpdated(new Date().toLocaleTimeString());
+    } catch (err) {
+      console.error('Stats fetch failed:', err);
+      setError('Docker stats could not be loaded. Check Docker socket access for the DockWatch server.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  // Live refresh every 5 seconds
+  useEffect(() => {
+    const id = setInterval(refresh, 5_000);
+    return () => clearInterval(id);
+  }, [refresh]);
+
+  if (loading) {
+    return (
+      <div className="rounded-[28px] border border-dock-border/70 bg-dock-card/80 p-5 shadow-dock">
+        <div className="grid gap-4 md:grid-cols-4">
+          {[1, 2, 3, 4].map((index) => (
+            <div key={index} className="h-24 animate-pulse rounded-3xl bg-dock-panel/80" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const totalCpu = containers.reduce((s, c) => s + c.cpu_percent, 0);
+  const totalMem = containers.reduce((s, c) => s + c.mem_percent, 0);
+  const sortedContainers = [...containers].sort((a, b) => b.cpu_percent - a.cpu_percent);
+  const topConsumers = sortedContainers.slice(0, 3).map((container) => container.name).join(', ');
+
+  return (
+    <section className="space-y-4 rounded-[28px] border border-dock-border/70 bg-dock-card/80 p-5 shadow-dock lg:p-6">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="text-[11px] uppercase tracking-[0.28em] text-dock-muted">Live Runtime</p>
+          <h3 className="mt-1 text-2xl font-bold tracking-tight text-white">Docker host telemetry</h3>
+        </div>
+        <div className="text-sm text-dock-muted">
+          {error ? error : `Last refresh ${lastUpdated ?? 'just now'}`}
+        </div>
+      </div>
+
+      {host && (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            label="Containers"
+            value={`${host.containers_running} / ${host.containers_total}`}
+            sub={`${containers.length} reporting live stats`}
+            accent="text-dock-green"
+          />
+          <StatCard
+            label="CPU Load"
+            value={`${totalCpu.toFixed(1)}%`}
+            sub={`${host.cpus} cores available`}
+            accent={totalCpu > 80 ? 'text-dock-red' : totalCpu > 50 ? 'text-dock-yellow' : 'text-dock-green'}
+          />
+          <StatCard
+            label="Memory Pressure"
+            value={`${totalMem.toFixed(1)}%`}
+            sub={host.memory_total}
+            accent={totalMem > 80 ? 'text-dock-red' : totalMem > 50 ? 'text-dock-yellow' : 'text-dock-green'}
+          />
+          <StatCard
+            label="Docker"
+            value={`v${host.server_version}`}
+            sub={`${host.os} (${host.architecture})`}
+            accent="text-dock-accent"
+          />
+        </div>
+      )}
+
+      <div className="rounded-[24px] border border-dock-border/70 bg-dock-panel/55 overflow-hidden">
+        <div className="flex flex-col gap-2 border-b border-dock-border/70 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h4 className="text-sm font-semibold uppercase tracking-[0.22em] text-dock-muted">Container Stats</h4>
+            <p className="mt-1 text-sm text-white">
+              {sortedContainers.length > 0 ? `Top consumers: ${topConsumers || 'n/a'}` : 'No active containers reported.'}
+            </p>
+          </div>
+        </div>
+
+        {sortedContainers.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-dock-border/70 text-dock-muted">
+                  <th className="px-4 py-3 text-left font-medium">Container</th>
+                  <th className="px-4 py-3 text-right font-medium">CPU</th>
+                  <th className="px-4 py-3 text-right font-medium">Memory</th>
+                  <th className="hidden px-4 py-3 text-right font-medium md:table-cell">Mem %</th>
+                  <th className="hidden px-4 py-3 text-right font-medium lg:table-cell">Net I/O</th>
+                  <th className="hidden px-4 py-3 text-right font-medium lg:table-cell">Block I/O</th>
+                  <th className="hidden px-4 py-3 text-right font-medium md:table-cell">PIDs</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedContainers.map((container) => (
+                  <tr key={container.id} className="border-b border-dock-border/40 transition hover:bg-dock-bg/18">
+                    <td className="max-w-[240px] truncate px-4 py-3 text-sm font-semibold text-white">{container.name}</td>
+                    <td className="px-4 py-3 text-right">
+                      <span className={container.cpu_percent > 80 ? 'text-dock-red' : container.cpu_percent > 50 ? 'text-dock-yellow' : 'text-dock-text'}>
+                        {container.cpu_percent.toFixed(1)}%
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right text-dock-text">
+                      {container.mem_usage} / {container.mem_limit}
+                    </td>
+                    <td className="hidden px-4 py-3 text-right md:table-cell">
+                      <div className="flex items-center justify-end gap-2">
+                        <div className="h-1.5 w-16 overflow-hidden rounded-full bg-dock-border/60">
+                          <div
+                            className={`h-full rounded-full ${container.mem_percent > 80 ? 'bg-dock-red' : container.mem_percent > 50 ? 'bg-dock-yellow' : 'bg-dock-green'}`}
+                            style={{ width: `${Math.min(container.mem_percent, 100)}%` }}
+                          />
+                        </div>
+                        <span className="w-10 text-right text-dock-muted">{container.mem_percent.toFixed(1)}%</span>
+                      </div>
+                    </td>
+                    <td className="hidden px-4 py-3 text-right text-dock-muted lg:table-cell">{container.net_io}</td>
+                    <td className="hidden px-4 py-3 text-right text-dock-muted lg:table-cell">{container.block_io}</td>
+                    <td className="hidden px-4 py-3 text-right text-dock-muted md:table-cell">{container.pids}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="px-4 py-10 text-center text-sm text-dock-muted">
+            No running containers reported by Docker at the moment.
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function StatCard({ label, value, sub, accent }: { label: string; value: string; sub: string; accent: string }) {
+  return (
+    <div className="rounded-3xl border border-dock-border/70 bg-dock-bg/26 p-4">
+      <p className="text-[11px] uppercase tracking-[0.22em] text-dock-muted">{label}</p>
+      <p className={`mt-3 text-3xl font-bold tracking-tight ${accent}`}>{value}</p>
+      <p className="mt-1 text-sm text-dock-muted">{sub}</p>
+    </div>
+  );
+}

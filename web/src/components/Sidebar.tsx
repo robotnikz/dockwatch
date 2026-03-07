@@ -1,0 +1,97 @@
+import { useState, useEffect } from 'react';
+import { NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { getStacks, type Stack } from '../api';
+
+export default function Sidebar() {
+  const [stacks, setStacks] = useState<Stack[]>([]);
+  const [search, setSearch] = useState('');
+  const navigate = useNavigate();
+  const location = useLocation();
+
+  const fetchStacks = () => getStacks().then(setStacks).catch(console.error);
+
+  useEffect(() => {
+    fetchStacks();
+    const id = setInterval(fetchStacks, 10000); // 10s auto-refresh for sidebar
+    return () => clearInterval(id);
+  }, []);
+
+  const filteredStacks = stacks.filter((s) => s.name.toLowerCase().includes(search.toLowerCase()));
+
+  return (
+    <aside className="w-[280px] shrink-0 border-r border-dock-border/50 bg-dock-card/60 flex flex-col">
+      <div className="p-5 flex items-center gap-3 cursor-pointer" onClick={() => navigate('/')}>
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-dock-accent text-dock-bg text-xl font-bold shadow-lg shadow-dock-accent/20">
+          🐳
+        </div>
+        <span className="text-xl font-bold text-white tracking-wide">DockWatch</span>
+      </div>
+
+      <div className="px-5 pb-4">
+        <button
+          onClick={() => navigate('/new')}
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-dock-accent/15 px-4 py-2.5 text-sm font-semibold text-dock-accent transition hover:bg-dock-accent hover:text-dock-bg"
+        >
+          <span className="text-lg">+</span> Compose
+        </button>
+      </div>
+
+      <div className="px-5 pb-4">
+        <input
+          type="text"
+          placeholder="Search..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full rounded-lg border border-dock-border/60 bg-dock-bg/50 px-3 py-2 text-sm text-white outline-none transition focus:border-dock-accent/60 focus:bg-dock-bg"
+        />
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-3 pb-4 scrollbar-thin">
+        <div className="space-y-1">
+          {filteredStacks.map((stack) => {
+            const isActive = stack.status === 'running';
+            const navActive = location.pathname === `/stack/${stack.name}`;
+            
+            return (
+              <NavLink
+                key={stack.name}
+                to={`/stack/${stack.name}`}
+                className={`group flex items-center justify-between rounded-xl px-3 py-2.5 transition ${navActive ? 'bg-dock-panel shadow-sm' : 'hover:bg-dock-panel/50'}`}
+              >
+                <div className="flex items-center gap-3 overflow-hidden">
+                  <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold ${isActive ? 'bg-dock-accent/20 text-dock-accent' : 'bg-dock-border/40 text-dock-muted'}`}>
+                    {isActive ? 'active' : 'inactive'}
+                  </span>
+                  <span className={`truncate text-sm font-medium ${navActive || isActive ? 'text-white' : 'text-dock-muted group-hover:text-white'}`}>
+                    {stack.name}
+                  </span>
+                </div>
+              </NavLink>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="p-4 border-t border-dock-border/50 space-y-2">
+        <NavLink 
+          to="/" 
+          className={({isActive}) => `block rounded-xl px-4 py-2 text-sm font-medium transition ${isActive ? 'text-dock-accent' : 'text-dock-muted hover:text-white'}`}
+        >
+          Overview
+        </NavLink>
+        <NavLink 
+          to="/convert" 
+          className={({isActive}) => `block rounded-xl px-4 py-2 text-sm font-medium transition ${isActive ? 'text-dock-accent' : 'text-dock-muted hover:text-white'}`}
+        >
+          Converter
+        </NavLink>
+        <NavLink 
+          to="/settings" 
+          className={({isActive}) => `block rounded-xl px-4 py-2 text-sm font-medium transition ${isActive ? 'text-dock-accent' : 'text-dock-muted hover:text-white'}`}
+        >
+          Settings
+        </NavLink>
+      </div>
+    </aside>
+  );
+}
