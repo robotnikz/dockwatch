@@ -61,7 +61,6 @@ Why build another Docker interface? Here is how DockWatch fits into the existing
 
 ## 🚀 Quick Start
 
-DockWatch utilizes the exact same directory layout as **Dockge**, making migration entirely seamless. 
 
 ```bash
 # Create directories
