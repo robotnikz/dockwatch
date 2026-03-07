@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import fs from 'node:fs/promises';
@@ -77,32 +78,61 @@ export async function deleteStack(name: string): Promise<void> {
   await fs.rm(dir, { recursive: true, force: true });
 }
 
-async function runCompose(name: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
-  const dir = stackDir(name);
-  return execFileAsync('docker', ['compose', '--ansi', 'always', ...args], {
-    cwd: dir,
-    timeout: 120_000,
-    env: { ...process.env, COMPOSE_PROJECT_NAME: name },
+async function runCompose(name: string, args: string[], onChunk?: (data: string) => void): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    const dir = stackDir(name);
+    const child = spawn('docker', ['compose', '--ansi', 'always', ...args], {
+      cwd: dir,
+      env: { ...process.env, COMPOSE_PROJECT_NAME: name },
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    child.stdout.on('data', (data) => {
+      const chunk = data.toString();
+      stdout += chunk;
+      if (onChunk) onChunk(chunk);
+    });
+
+    child.stderr.on('data', (data) => {
+      const chunk = data.toString();
+      stderr += chunk;
+      if (onChunk) onChunk(chunk);
+    });
+
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve({ stdout, stderr });
+      } else {
+        const error = new Error(`Command failed with exit code ${code}: ${stderr}`);
+        (error as any).stdout = stdout;
+        (error as any).stderr = stderr;
+        reject(error);
+      }
+    });
+
+    child.on('error', reject);
   });
 }
 
-export async function composeUp(name: string): Promise<string> {
-  const result = await runCompose(name, ['up', '-d', '--remove-orphans']);
+export async function composeUp(name: string, onChunk?: (chunk: string) => void): Promise<string> {
+  const result = await runCompose(name, ['up', '-d', '--remove-orphans'], onChunk);
   return result.stdout + result.stderr;
 }
 
-export async function composeDown(name: string): Promise<string> {
-  const result = await runCompose(name, ['down']);
+export async function composeDown(name: string, onChunk?: (chunk: string) => void): Promise<string> {
+  const result = await runCompose(name, ['down'], onChunk);
   return result.stdout + result.stderr;
 }
 
-export async function composeRestart(name: string): Promise<string> {
-  const result = await runCompose(name, ['restart']);
+export async function composeRestart(name: string, onChunk?: (chunk: string) => void): Promise<string> {
+  const result = await runCompose(name, ['restart'], onChunk);
   return result.stdout + result.stderr;
 }
 
-export async function composePull(name: string): Promise<string> {
-  const result = await runCompose(name, ['pull']);
+export async function composePull(name: string, onChunk?: (chunk: string) => void): Promise<string> {
+  const result = await runCompose(name, ['pull'], onChunk);
   return result.stdout + result.stderr;
 }
 
@@ -116,9 +146,9 @@ export async function composePs(name: string): Promise<string> {
   return result.stdout;
 }
 
-export async function composePullAndRecreate(name: string): Promise<string> {
-  const pullResult = await runCompose(name, ['pull']);
-  const upResult = await runCompose(name, ['up', '-d', '--remove-orphans']);
+export async function composePullAndRecreate(name: string, onChunk?: (chunk: string) => void): Promise<string> {
+  const pullResult = await runCompose(name, ['pull'], onChunk);
+  const upResult = await runCompose(name, ['up', '-d', '--remove-orphans'], onChunk);
   return pullResult.stdout + pullResult.stderr + '\n' + upResult.stdout + upResult.stderr;
 }
 

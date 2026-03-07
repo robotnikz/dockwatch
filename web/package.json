@@ -12,7 +12,8 @@
     "ansi_up": "^6.0.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-router-dom": "^7.1.0"
+    "react-router-dom": "^7.1.0",
+    "tty": "^1.0.1"
   },
   "devDependencies": {
     "@types/react": "^19.0.0",

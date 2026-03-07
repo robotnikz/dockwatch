@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getStack, getStacks, saveStack, deleteStack, stackUp, stackDown, stackRestart, stackUpdate, stackLogs, type Stack } from '../api';
+import { getStack, getStacks, saveStack, deleteStack, stackUp, stackDown, stackRestart, stackUpdate, stackLogs, streamStackAction, type Stack } from '../api';
+import { AnsiUp } from 'ansi_up';
+
+const ansiUp = new AnsiUp();
 
 const TEMPLATE = `services:
   app:
@@ -23,6 +26,8 @@ export default function StackEditor() {
   
   const [isEditing, setIsEditing] = useState(isNew);
   const [loading, setLoading] = useState(!isNew);
+  const [streamModal, setStreamModal] = useState({ show: false, logs: '', title: '' });
+  const streamEndRef = useRef<HTMLDivElement>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [logs, setLogs] = useState<string>('');
   const [error, setError] = useState('');
@@ -88,23 +93,43 @@ export default function StackEditor() {
 
   const handleAction = async (action: 'up' | 'down' | 'restart' | 'update' | 'delete') => {
     if (!name) return;
-    if (action === 'delete' && !confirm(`Delete stack "${name}"? This will stop and remove all containers.`)) return;
+    if (action === 'delete') {
+      if (!confirm(`Delete stack "${name}"? This will stop and remove all containers.`)) return;
+      setActionLoading(action);
+      try {
+        await deleteStack(name);
+        navigate('/');
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setActionLoading(null);
+      }
+      return;
+    }
     
     setActionLoading(action);
     setError('');
+    
+    const titleMap: Record<string, string> = {
+      up: 'Starte Stack...',
+      down: 'Stoppe Stack...',
+      restart: 'Starte Stack neu...',
+      update: 'Aktualisiere Stack...'
+    };
+    
+    setStreamModal({ show: true, logs: '', title: titleMap[action] });
+    
     try {
-      if (action === 'up') await stackUp(name);
-      else if (action === 'down') await stackDown(name);
-      else if (action === 'restart') await stackRestart(name);
-      else if (action === 'update') await stackUpdate(name);
-      else if (action === 'delete') {
-        await deleteStack(name);
-        navigate('/');
-        return;
-      }
+      await streamStackAction(name, action, (chunk) => {
+        setStreamModal(prev => ({ ...prev, logs: prev.logs + chunk }));
+        if (streamEndRef.current) {
+          streamEndRef.current.scrollIntoView({ behavior: 'smooth' });
+        }
+      });
       await fetchStackInfo();
       await fetchLogs();
     } catch (err: any) {
+      setStreamModal(prev => ({ ...prev, logs: prev.logs + '\n[Fehler: ' + err.message + ']' }));
       setError(err.message);
     } finally {
       setActionLoading(null);
@@ -252,7 +277,7 @@ export default function StackEditor() {
                 </div>
                 <div className="flex-1 rounded-[1.25rem] bg-[#0c0d12] p-4 border border-dock-border/50 overflow-hidden relative">
                   <div className="absolute inset-x-4 inset-y-4 overflow-y-auto scrollbar-thin text-xs font-mono text-gray-300 leading-relaxed break-all">
-                    {logs || 'Keine Logs verfügbar.'}
+                    <div dangerouslySetInnerHTML={{ __html: ansiUp.ansi_to_html(logs || 'Keine Logs verfügbar.') }} />
                     <div ref={logsEndRef} />
                   </div>
                 </div>

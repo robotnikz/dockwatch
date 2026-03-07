@@ -115,3 +115,50 @@ export const updateServiceResources = (stackName: string, serviceName: string, c
   request<{ ok: boolean; content: string; needsRestart: boolean }>(`/resources/${stackName}/${serviceName}`, {
     method: 'PUT', body: JSON.stringify(config),
   });
+
+export async function streamStackAction(
+  name: string,
+  action: 'up' | 'down' | 'restart' | 'update',
+  onLog: (text: string) => void
+): Promise<void> {
+  const res = await fetch(`${BASE}/stacks/${name}/${action}?stream=true`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error('Streaming not supported by browser');
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (value) {
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const dataStr = line.substring(6);
+          if (dataStr.trim()) {
+            try {
+              const parsed = JSON.parse(dataStr);
+              if (parsed.error) throw new Error(parsed.error);
+              if (parsed.chunk) onLog(parsed.chunk);
+              if (parsed.finish) return;
+            } catch (err: any) {
+              // Ignore partial JSON parse errors for safety if we split chunks wrong, though split by 
+ // should be safe for SSE
+              if (err.name === 'SyntaxError') continue;
+              throw err;
+            }
+          }
+        }
+      }
+    }
+    if (done) break;
+  }
+}

@@ -86,34 +86,91 @@ router.delete('/:name', async (req: Request<NameParams>, res: Response) => {
 // Stack actions
 router.post('/:name/up', async (req: Request<NameParams>, res: Response) => {
   try {
-    const output = await composeUp(req.params.name);
-    await notifyStackAction(req.params.name, 'started', true);
-    res.json({ ok: true, output });
+    if (req.query.stream === 'true') {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      });
+      await composeUp(req.params.name, (chunk) => {
+        res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+      });
+      await notifyStackAction(req.params.name, 'started', true);
+      res.write(`data: ${JSON.stringify({ ok: true, finish: true })}\n\n`);
+      res.end();
+    } else {
+      const output = await composeUp(req.params.name);
+      await notifyStackAction(req.params.name, 'started', true);
+      res.json({ ok: true, output });
+    }
   } catch (err: any) {
     await notifyStackAction(req.params.name, 'start', false);
-    res.status(500).json({ error: err.message });
+    if (req.query.stream === 'true') {
+      res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+      res.end();
+    } else {
+      res.status(500).json({ error: err.message });
+    }
   }
 });
 
 router.post('/:name/down', async (req: Request<NameParams>, res: Response) => {
   try {
-    const output = await composeDown(req.params.name);
-    await notifyStackAction(req.params.name, 'stopped', true);
-    res.json({ ok: true, output });
+    if (req.query.stream === 'true') {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      });
+      await composeDown(req.params.name, (chunk) => {
+        res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+      });
+      await notifyStackAction(req.params.name, 'stopped', true);
+      res.write(`data: ${JSON.stringify({ ok: true, finish: true })}\n\n`);
+      res.end();
+    } else {
+      const output = await composeDown(req.params.name);
+      await notifyStackAction(req.params.name, 'stopped', true);
+      res.json({ ok: true, output });
+    }
   } catch (err: any) {
     await notifyStackAction(req.params.name, 'stop', false);
-    res.status(500).json({ error: err.message });
+    if (req.query.stream === 'true') {
+      res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+      res.end();
+    } else {
+      res.status(500).json({ error: err.message });
+    }
   }
 });
 
 router.post('/:name/restart', async (req: Request<NameParams>, res: Response) => {
   try {
-    const output = await composeRestart(req.params.name);
-    await notifyStackAction(req.params.name, 'restarted', true);
-    res.json({ ok: true, output });
+    if (req.query.stream === 'true') {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      });
+      await composeRestart(req.params.name, (chunk) => {
+        res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+      });
+      await notifyStackAction(req.params.name, 'restarted', true);
+      res.write(`data: ${JSON.stringify({ ok: true, finish: true })}\n\n`);
+      res.end();
+    } else {
+      const output = await composeRestart(req.params.name);
+      await notifyStackAction(req.params.name, 'restarted', true);
+      res.json({ ok: true, output });
+    }
   } catch (err: any) {
     await notifyStackAction(req.params.name, 'restart', false);
-    res.status(500).json({ error: err.message });
+    if (req.query.stream === 'true') {
+      res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+      res.end();
+    } else {
+      res.status(500).json({ error: err.message });
+    }
   }
 });
 
@@ -128,12 +185,31 @@ router.post('/:name/pull', async (req: Request<NameParams>, res: Response) => {
 
 router.post('/:name/update', async (req: Request<NameParams>, res: Response) => {
   try {
-    const output = await composePullAndRecreate(req.params.name);
-    await notifyStackAction(req.params.name, 'updated', true);
-    res.json({ ok: true, output });
+    if (req.query.stream === 'true') {
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      });
+      await composePullAndRecreate(req.params.name, (chunk) => {
+        res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+      });
+      await notifyStackAction(req.params.name, 'updated', true);
+      res.write(`data: ${JSON.stringify({ ok: true, finish: true })}\n\n`);
+      res.end();
+    } else {
+      const output = await composePullAndRecreate(req.params.name);
+      await notifyStackAction(req.params.name, 'updated', true);
+      res.json({ ok: true, output });
+    }
   } catch (err: any) {
     await notifyStackAction(req.params.name, 'update', false);
-    res.status(500).json({ error: err.message });
+    if (req.query.stream === 'true') {
+      res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
+      res.end();
+    } else {
+      res.status(500).json({ error: err.message });
+    }
   }
 });
 
