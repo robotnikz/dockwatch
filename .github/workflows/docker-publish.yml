@@ -73,6 +73,24 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
 
+      - name: Compute image version metadata
+        id: image-version
+        shell: bash
+        run: |
+          set -euo pipefail
+          short_sha="${GITHUB_SHA::7}"
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            app_version="${GITHUB_REF_NAME#v}"
+          elif [[ "${GITHUB_REF}" == "refs/heads/main" ]]; then
+            app_version="main-${short_sha}"
+          elif [[ "${GITHUB_EVENT_NAME}" == "pull_request" ]]; then
+            app_version="pr-${{ github.event.number }}-${short_sha}"
+          else
+            app_version="sha-${short_sha}"
+          fi
+          echo "app_version=${app_version}" >> "$GITHUB_OUTPUT"
+          echo "app_revision=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
       # Build and push Docker image with Buildx (don't push on PR)
       # https://github.com/docker/build-push-action
       - name: Build and push Docker image
@@ -83,6 +101,9 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            APP_VERSION=${{ steps.image-version.outputs.app_version }}
+            APP_REVISION=${{ steps.image-version.outputs.app_revision }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

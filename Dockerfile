@@ -18,6 +18,9 @@ RUN npm run build
 FROM node:22-alpine
 RUN apk add --no-cache docker-cli docker-cli-compose
 
+ARG APP_VERSION=dev
+ARG APP_REVISION=unknown
+
 WORKDIR /app
 
 # Server dependencies (production only)
@@ -37,6 +40,8 @@ ENV PORT=3000
 ENV DOCKWATCH_DATA=/app/data
 ENV DOCKWATCH_STACKS=/opt/stacks
 ENV NODE_ENV=production
+ENV DOCKWATCH_VERSION=${APP_VERSION}
+ENV DOCKWATCH_REVISION=${APP_REVISION}
 
 EXPOSE 3000
 
