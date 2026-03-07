@@ -45,6 +45,21 @@ Real screenshots with sanitized placeholder data. No private hostnames, secrets,
 
 ---
 
+## 🙌 Shoutout to the Ecosystem
+
+DockWatch was not built because other tools are bad. It was built because this ecosystem is full of great ideas worth building on.
+
+Huge respect to:
+- **Dockge** for the clean compose-first workflow
+- **Portainer** for powerful all-in-one container management
+- **Podman** / **Podman Desktop** for rootless-first container workflows
+- and also **Watchtower**, **Dozzle**, **Lazydocker**, and many other OSS projects that make homelab and self-hosting better every day
+
+DockWatch is ultimately my personal mix of the things I love most about these projects.
+If you use these tools, please support the maintainers with stars, feedback, contributions, or sponsorship.
+
+---
+
 ## 🆚 Honest Comparison
 
 Why build another Docker interface? Here is how DockWatch fits into the existing ecosystem:
