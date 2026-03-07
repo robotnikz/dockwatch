@@ -101,7 +101,7 @@ export default function Sidebar() {
             {versionBadge}
           </div>
           <div className="mt-2 text-sm font-medium text-white">
-            v{appVersion?.currentVersion || '...'}
+            {appVersion?.currentVersion || '...'}
           </div>
           {appVersion?.latestVersion && appVersion.updateAvailable ? (
             <div className="mt-1 text-xs text-dock-muted">Latest: v{appVersion.latestVersion}</div>
