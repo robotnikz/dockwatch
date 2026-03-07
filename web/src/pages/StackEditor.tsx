@@ -6,6 +6,13 @@ import ServiceConfigurator from '../components/ServiceConfigurator';
 
 const ansiUp = new AnsiUp();
 
+function normalizeTerminalText(input: string): string {
+  return input
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1a\x1c-\x1f\x7f]/g, '');
+}
+
 const TEMPLATE = `services:
   app:
     image: nginx:latest
@@ -56,7 +63,7 @@ export default function StackEditor() {
     if (!name || isNew) return;
     try {
       const res = await stackLogs(name, 100);
-      setLogs(res.output);
+      setLogs(normalizeTerminalText(res.output));
     } catch (err) {
       // ignore log fetch errors quietly
     }
@@ -186,7 +193,7 @@ export default function StackEditor() {
             </div>
             
             <div className="flex-1 bg-black rounded-xl p-4 overflow-y-auto font-mono text-sm text-gray-300 relative border border-dock-border/50">
-              <div className="whitespace-pre-wrap break-all" dangerouslySetInnerHTML={{ __html: ansiUp.ansi_to_html(streamModal.logs || 'Verbinde...') }}></div>
+              <div className="whitespace-pre-wrap break-words" dangerouslySetInnerHTML={{ __html: ansiUp.ansi_to_html(streamModal.logs || 'Verbinde...') }}></div>
               <div ref={streamEndRef} />
             </div>
             
@@ -306,7 +313,7 @@ export default function StackEditor() {
                     <button onClick={fetchLogs} className="text-xs text-dock-accent hover:underline">Aktualisieren</button>
                 </div>
                 <div className="flex-1 rounded-[1.25rem] bg-[#0c0d12] p-4 border border-dock-border/50 overflow-hidden relative">
-                  <div className="absolute inset-x-4 inset-y-4 overflow-y-auto scrollbar-thin text-xs font-mono text-gray-300 leading-relaxed break-all">
+                  <div className="absolute inset-x-4 inset-y-4 overflow-y-auto scrollbar-thin text-xs font-mono text-gray-300 leading-relaxed break-words whitespace-pre-wrap">
                     <div dangerouslySetInnerHTML={{ __html: ansiUp.ansi_to_html(logs || 'Keine Logs verfügbar.') }} />
                     <div ref={logsEndRef} />
                   </div>

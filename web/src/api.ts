@@ -147,11 +147,18 @@ export async function streamStackAction(
             try {
               const parsed = JSON.parse(dataStr);
               if (parsed.error) throw new Error(parsed.error);
-              if (parsed.chunk) onLog(parsed.chunk);
+              if (parsed.chunk) {
+                // Compose output often uses carriage-return progress updates.
+                // Convert to clean newlines so the web terminal stays readable.
+                const normalized = String(parsed.chunk)
+                  .replace(/\r\n/g, '\n')
+                  .replace(/\r/g, '\n')
+                  .replace(/[\x00-\x08\x0b\x0c\x0e-\x1a\x1c-\x1f\x7f]/g, '');
+                onLog(normalized);
+              }
               if (parsed.finish) return;
             } catch (err: any) {
-              // Ignore partial JSON parse errors for safety if we split chunks wrong, though split by 
- // should be safe for SSE
+              // Ignore partial JSON parse errors for safety if we split chunks wrong.
               if (err.name === 'SyntaxError') continue;
               throw err;
             }
