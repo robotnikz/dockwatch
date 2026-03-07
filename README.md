@@ -17,7 +17,8 @@
 
 ## ✨ Features at a Glance
 
-* 📦 **Stack Management** — Create, edit, start, stop, and delete Docker Compose stacks via a clean web UI.
+* 📦 **Stack Management** — Create, edit, start, stop, update, and delete Docker Compose stacks via a clean web UI.
+* 🔄 **1-Click Updates** — Pull and recreate existing stacks with a single click right from the UI.
 * 📊 **Live Runtime Dashboard** — Real-time telemetry for CPU, Memory, Network, Block I/O, and PIDs directly on the dashboard.
 * 🔔 **Discord Notifications** — Get instantly notified about available updates, automated checks, and stack actions via Discord webhooks.
 * 🪄 **Docker Run Converter** — Turn any `docker run` shell command instantly into a deployable `compose.yaml`.
