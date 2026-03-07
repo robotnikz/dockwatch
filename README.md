@@ -17,6 +17,8 @@
 
 > **Note**: DockWatch was built primarily as a private project because I always felt a few crucial features were missing from other homelab tools. It was "vibe-coded" to fit my exact needs, but is now heavily polished and available for anyone facing the same pain points.
 
+It's now the only tool I need to manage Docker.
+
 ## ✨ Features at a Glance
 
 * 📦 **Stack Management** — Create, edit, start, stop, update, and delete Docker Compose stacks via a clean web UI.
