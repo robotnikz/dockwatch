@@ -12,6 +12,7 @@ const GITHUB_REPO = process.env.DOCKWATCH_GITHUB_REPO || 'dockwatch';
 const GITHUB_URL = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}`;
 const RELEASE_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
 const TAGS_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/tags?per_page=30`;
+const COMPARE_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/compare`;
 const CHECK_TTL_MS = 60 * 60 * 1000; // 1 hour
 
 function getCurrentVersion(): string {
@@ -79,6 +80,7 @@ function compareVersions(a: string, b: string): number {
 
 export interface AppVersionStatus {
   currentVersion: string;
+  currentRevision: string | null;
   latestVersion: string | null;
   updateAvailable: boolean;
   checkedAt: string;
@@ -90,7 +92,7 @@ export interface AppVersionStatus {
 let cache: AppVersionStatus | null = null;
 let lastCheckMs = 0;
 
-async function fetchLatestReleaseVersion(): Promise<{ latestVersion: string; releaseUrl: string | null }> {
+function getGithubHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github+json',
     'User-Agent': 'dockwatch',
@@ -99,6 +101,12 @@ async function fetchLatestReleaseVersion(): Promise<{ latestVersion: string; rel
   if (process.env.GITHUB_TOKEN) {
     headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
   }
+
+  return headers;
+}
+
+async function fetchLatestReleaseVersion(): Promise<{ latestVersion: string; releaseUrl: string | null }> {
+  const headers = getGithubHeaders();
 
   const response = await fetch(RELEASE_API_URL, {
     headers,
@@ -142,6 +150,31 @@ async function fetchLatestReleaseVersion(): Promise<{ latestVersion: string; rel
   };
 }
 
+function isSemverLike(version: string): boolean {
+  return /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(normalizeVersion(version));
+}
+
+async function isCurrentBehindLatestRelease(latestVersion: string, currentRevision: string): Promise<boolean | null> {
+  try {
+    const response = await fetch(`${COMPARE_API_URL}/v${latestVersion}...${currentRevision}`, {
+      headers: getGithubHeaders(),
+    });
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = (await response.json()) as { status?: string };
+    const status = String(data.status || '').toLowerCase();
+
+    if (status === 'behind') return true;
+    if (status === 'identical' || status === 'ahead') return false;
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getAppVersionStatus(force = false): Promise<AppVersionStatus> {
   const now = Date.now();
   if (!force && cache && now - lastCheckMs < CHECK_TTL_MS) {
@@ -149,13 +182,24 @@ export async function getAppVersionStatus(force = false): Promise<AppVersionStat
   }
 
   const currentVersion = normalizeVersion(getCurrentVersion());
+  const currentRevision = (process.env.DOCKWATCH_REVISION || '').trim() || null;
 
   try {
     const { latestVersion, releaseUrl } = await fetchLatestReleaseVersion();
-    const updateAvailable = compareVersions(latestVersion, currentVersion) > 0;
+    let updateAvailable = false;
+
+    if (isSemverLike(currentVersion)) {
+      updateAvailable = compareVersions(latestVersion, currentVersion) > 0;
+    } else if (currentRevision) {
+      const behind = await isCurrentBehindLatestRelease(latestVersion, currentRevision);
+      if (behind !== null) {
+        updateAvailable = behind;
+      }
+    }
 
     cache = {
       currentVersion,
+      currentRevision,
       latestVersion,
       updateAvailable,
       checkedAt: new Date().toISOString(),
@@ -168,6 +212,7 @@ export async function getAppVersionStatus(force = false): Promise<AppVersionStat
   } catch {
     cache = {
       currentVersion,
+      currentRevision,
       latestVersion: cache?.latestVersion || null,
       updateAvailable: cache?.updateAvailable || false,
       checkedAt: new Date().toISOString(),

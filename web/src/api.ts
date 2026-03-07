@@ -175,6 +175,7 @@ export async function streamStackAction(
 // ---- Meta ----
 export interface AppVersionStatus {
   currentVersion: string;
+  currentRevision: string | null;
   latestVersion: string | null;
   updateAvailable: boolean;
   checkedAt: string;
