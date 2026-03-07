@@ -19,10 +19,8 @@
 
 * 📦 **Stack Management** — Create, edit, start, stop, and delete Docker Compose stacks via a clean web UI.
 * 📊 **Live Runtime Dashboard** — Real-time telemetry for CPU, Memory, Network, Block I/O, and PIDs directly on the dashboard.
-* 🔄 **Smart Auto-Updates** — Detects new container image versions securely. Pull and recreate with a single click. Exclude specific containers from updates easily.
 * 🔔 **Discord Notifications** — Get instantly notified about available updates, automated checks, and stack actions via Discord webhooks.
 * 🪄 **Docker Run Converter** — Turn any `docker run` shell command instantly into a deployable `compose.yaml`.
-* 🎛️ **Resource Limits GUI** — Easy CPU and RAM limits/reservations straight from the UI without handwriting YAML config limits.
 
 ---
 
