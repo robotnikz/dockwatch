@@ -42,6 +42,65 @@ function appendStreamChunk(lines: string[], currentLine: string, chunk: string):
   return { lines: nextLines, currentLine: nextCurrent };
 }
 
+function stripAnsi(input: string): string {
+  return input.replace(/\x1b\[[0-9;?]*[A-Za-z]/g, '');
+}
+
+function progressKeyForLine(line: string): string | null {
+  const plain = stripAnsi(line)
+    .replace(/^\s*[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s*/u, '')
+    .replace(/\s+\d+(?:\.\d+)?s\s*$/i, '')
+    .trim();
+
+  if (!plain) return null;
+
+  const summary = plain.match(/^\[\+\]\s+(Running|Pulling)\s+\d+\/\d+/i);
+  if (summary) {
+    return `summary:${summary[1].toLowerCase()}`;
+  }
+
+  const objectLine = plain.match(/^(Container|Network|Volume|Image)\s+([^\s]+)/i);
+  if (objectLine) {
+    return `object:${objectLine[1].toLowerCase()}:${objectLine[2].toLowerCase()}`;
+  }
+
+  const serviceLine = plain.match(/^([^\s]+)\s+(Pulling|Waiting|Downloading|Extracting|Verifying|Complete|Pulled)\b/i);
+  if (serviceLine) {
+    return `service:${serviceLine[1].toLowerCase()}`;
+  }
+
+  return null;
+}
+
+function mergeProgressLines(lines: string[], progressLineIndexes: Map<string, number>): string[] {
+  const merged: string[] = [];
+  const nextIndexes = new Map<string, number>();
+
+  for (const line of lines) {
+    const key = progressKeyForLine(line);
+    if (!key) {
+      merged.push(line);
+      continue;
+    }
+
+    const existingIndex = nextIndexes.get(key);
+    if (existingIndex == null) {
+      nextIndexes.set(key, merged.length);
+      merged.push(line);
+      continue;
+    }
+
+    merged[existingIndex] = line;
+  }
+
+  progressLineIndexes.clear();
+  for (const [key, index] of nextIndexes.entries()) {
+    progressLineIndexes.set(key, index);
+  }
+
+  return merged;
+}
+
 const TEMPLATE = `services:
   app:
     image: nginx:latest
@@ -101,6 +160,7 @@ export default function StackEditor() {
   const hideActionStreamTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const actionLinesRef = useRef<string[]>([]);
   const actionCurrentLineRef = useRef('');
+  const actionProgressIndexesRef = useRef<Map<string, number>>(new Map());
   const composeTextareaRef = useRef<HTMLTextAreaElement>(null);
   const composeHighlightRef = useRef<HTMLPreElement>(null);
 
@@ -235,14 +295,15 @@ export default function StackEditor() {
     });
     actionLinesRef.current = ['Connecting...'];
     actionCurrentLineRef.current = '';
+    actionProgressIndexesRef.current = new Map();
     shouldAutoScrollActionRef.current = true;
     
     try {
       await streamStackAction(name, action, (chunk) => {
         const parsed = appendStreamChunk(actionLinesRef.current, actionCurrentLineRef.current, chunk);
-        actionLinesRef.current = parsed.lines;
+        actionLinesRef.current = mergeProgressLines(parsed.lines, actionProgressIndexesRef.current);
         actionCurrentLineRef.current = parsed.currentLine;
-        const content = [...parsed.lines, parsed.currentLine].filter(Boolean).join('\n') + '\n';
+        const content = [...actionLinesRef.current, parsed.currentLine].filter(Boolean).join('\n') + '\n';
         setActionStream((prev) => ({
           ...prev,
           visible: true,
@@ -334,6 +395,9 @@ export default function StackEditor() {
   }
 
   const isActive = stackData?.status === 'running' || stackData?.status === 'partial';
+  const canRestart = isActive;
+  const primaryPowerAction: 'up' | 'down' = isActive ? 'down' : 'up';
+  const primaryPowerLabel = isActive ? 'Stop' : 'Start';
 
   return (
     <div className="space-y-6 max-w-[1400px] mx-auto">
@@ -375,14 +439,27 @@ export default function StackEditor() {
               <button onClick={() => setIsEditing(true)} className="flex items-center gap-2 rounded-xl bg-dock-panel px-4 py-2 text-sm font-bold text-white transition hover:bg-dock-border">
                 <span>✏️</span> Edit
               </button>
-              <button disabled={!!actionLoading} onClick={() => handleAction('restart')} className="flex items-center gap-2 rounded-xl bg-dock-panel px-4 py-2 text-sm font-bold text-white transition hover:bg-dock-border disabled:opacity-50">
+              <button
+                disabled={!!actionLoading || !canRestart}
+                onClick={() => handleAction('restart')}
+                className="flex items-center gap-2 rounded-xl bg-dock-panel px-4 py-2 text-sm font-bold text-white transition hover:bg-dock-border disabled:cursor-not-allowed disabled:opacity-50"
+              >
                 <span>🔄</span> Restart
               </button>
               <button disabled={!!actionLoading} onClick={() => handleAction('update')} className="flex items-center gap-2 rounded-xl bg-dock-panel px-4 py-2 text-sm font-bold text-white transition hover:bg-dock-border disabled:opacity-50">
                 <span>☁️</span> Update
               </button>
-              <button disabled={!!actionLoading} onClick={() => handleAction('down')} className="flex items-center gap-2 rounded-xl bg-dock-panel px-4 py-2 text-sm font-bold text-white transition hover:bg-dock-border disabled:opacity-50">
-                <span>⏹</span> Stop
+              <button
+                disabled={!!actionLoading}
+                onClick={() => handleAction(primaryPowerAction)}
+                className={[
+                  'flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition disabled:opacity-50',
+                  isActive
+                    ? 'bg-dock-red/20 text-dock-red hover:bg-dock-red/30'
+                    : 'bg-dock-green/20 text-dock-green hover:bg-dock-green/30',
+                ].join(' ')}
+              >
+                <span>{isActive ? '⏹' : '▶'}</span> {primaryPowerLabel}
               </button>
               <div className="flex-1" />
               <button disabled={!!actionLoading} onClick={() => handleAction('delete')} className="flex items-center gap-2 rounded-xl bg-dock-red text-dock-bg px-4 py-2 text-sm font-bold transition hover:bg-red-400 disabled:opacity-50">
@@ -463,10 +540,7 @@ export default function StackEditor() {
                     </div>
                   )) : (
                     <div className="rounded-[1.25rem] bg-dock-card p-6 text-center border border-dock-border/50">
-                      <p className="text-dock-muted font-medium">No containers found.</p>
-                      <button onClick={() => handleAction('up')} className="mt-3 rounded-lg bg-dock-accent/10 px-4 py-2 text-sm font-semibold text-dock-accent transition hover:bg-dock-accent hover:text-dock-bg">
-                        Start stack
-                      </button>
+                      <p className="text-dock-muted font-medium">{isActive ? 'No containers found.' : 'No running container.'}</p>
                     </div>
           )}
                 </div>
