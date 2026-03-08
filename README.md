@@ -33,8 +33,6 @@
 
 ## 🖼️ Screenshots
 
-Real screenshots with sanitized placeholder data. No private hostnames, secrets, or internal IPs are shown.
-
 ### Dashboard
 
 ![DockWatch Dashboard](docs/screenshots/dashboard.png)
