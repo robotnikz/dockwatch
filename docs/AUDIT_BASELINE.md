@@ -35,6 +35,7 @@ Branch: `audit/performance-architecture-security-coverage`
 - Focused target: `server/src/services/resources.ts`
 - Expanded target: `server/src/services/resources.ts`, `server/src/middleware/apiRateLimit.ts`
 - Expanded target: `server/src/services/resources.ts`, `server/src/middleware/apiRateLimit.ts`, `server/src/routes/settings.ts`
+- Expanded target: `server/src/services/resources.ts`, `server/src/middleware/apiRateLimit.ts`, `server/src/routes/settings.ts`, `server/src/routes/updates.ts`
 - Thresholds (initial practical baseline):
   - lines: 70
   - statements: 70

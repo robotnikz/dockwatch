@@ -12,6 +12,7 @@ export default defineConfig({
         'src/services/resources.ts',
         'src/middleware/apiRateLimit.ts',
         'src/routes/settings.ts',
+        'src/routes/updates.ts',
       ],
       all: true,
       thresholds: {
