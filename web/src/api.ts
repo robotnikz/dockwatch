@@ -97,6 +97,135 @@ export interface StatsResponse {
 
 export const getStats = () => request<StatsResponse>('/stats');
 
+// ---- Cleanup ----
+export interface CleanupConfig {
+  scheduleEnabled: boolean;
+  scheduleFrequency: 'daily' | 'weekly' | 'monthly';
+  scheduleTime: string;
+  protectionEnabled: boolean;
+  protectedImageLabels: string[];
+  protectedVolumeLabels: string[];
+  options: {
+    containers: boolean;
+    images: boolean;
+    networks: boolean;
+    volumes: boolean;
+    buildCache: boolean;
+  };
+}
+
+export interface CleanupPreview {
+  containers: { total: number; reclaimable: string };
+  images: { total: number; reclaimable: string };
+  volumes: { total: number; reclaimable: string };
+  buildCache: { total: number; reclaimable: string };
+}
+
+export interface CleanupRunResult {
+  reason: 'manual' | 'scheduled';
+  dryRun: boolean;
+  startedAt: string;
+  finishedAt: string;
+  reclaimedBytes: number;
+  reclaimedHuman: string;
+  deleted: {
+    containers: number;
+    images: number;
+    networks: number;
+    volumes: number;
+    buildCache: number;
+  };
+  outputs: string[];
+  success: boolean;
+  error?: string;
+}
+
+export interface CleanupDashboard {
+  config: CleanupConfig;
+  preview: CleanupPreview | null;
+  stats: {
+    totalReclaimedBytes: number;
+    totalReclaimedHuman: string;
+    pruneRuns: number;
+    failedRuns: number;
+    deleted: {
+      containers: number;
+      images: number;
+      networks: number;
+      volumes: number;
+      buildCache: number;
+    };
+    firstRunAt: string | null;
+    lastRunAt: string | null;
+    latestRun: CleanupRunResult | null;
+  };
+}
+
+export const getCleanupDashboard = () => request<CleanupDashboard>('/cleanup');
+export const getCleanupPreview = () => request<CleanupPreview>('/cleanup/preview');
+export const saveCleanupConfig = (config: Partial<CleanupConfig>) =>
+  request<{ ok: boolean; config: CleanupConfig }>('/cleanup/config', {
+    method: 'PUT',
+    body: JSON.stringify(config),
+  });
+export const runCleanup = (options?: CleanupConfig['options']) =>
+  request<{ ok: boolean; result: CleanupRunResult }>('/cleanup/run', {
+    method: 'POST',
+    body: JSON.stringify({ options }),
+  });
+
+export async function streamCleanupRun(
+  args: { options?: CleanupConfig['options']; dryRun?: boolean },
+  onLog: (text: string) => void,
+): Promise<CleanupRunResult> {
+  const query = new URLSearchParams({ stream: 'true' });
+  if (args.dryRun) query.set('dryRun', 'true');
+
+  const res = await fetch(`${BASE}/cleanup/run?${query.toString()}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ options: args.options, dryRun: args.dryRun }),
+  });
+
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error('Streaming not supported by browser');
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (value) {
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const payload = line.slice(6).trim();
+        if (!payload) continue;
+        const parsed = JSON.parse(payload) as {
+          chunk?: string;
+          error?: string;
+          finish?: boolean;
+          result?: CleanupRunResult;
+        };
+        if (parsed.error) throw new Error(parsed.error);
+        if (parsed.chunk) {
+          onLog(String(parsed.chunk).replace(/\r\n/g, '\n').replace(/\r/g, '\n'));
+        }
+        if (parsed.finish && parsed.result) {
+          return parsed.result;
+        }
+      }
+    }
+    if (done) break;
+  }
+
+  throw new Error('Cleanup stream ended without final result');
+}
+
 // ---- Converter ----
 export const convertDockerRun = (command: string) =>
   request<{ compose: string }>('/convert', { method: 'POST', body: JSON.stringify({ command }) });

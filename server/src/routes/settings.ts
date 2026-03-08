@@ -5,7 +5,25 @@ import { restartScheduler } from '../services/scheduler.js';
 
 const router = Router();
 
-const ALLOWED_KEYS = ['discord_webhook', 'discord_notify_actions', 'check_cron', 'update_exclusions'];
+const ALLOWED_KEYS = [
+  'discord_webhook',
+  'discord_notify_actions',
+  'check_cron',
+  'update_exclusions',
+  'prunemate_url',
+  'cleanup_schedule_enabled',
+  'cleanup_schedule_frequency',
+  'cleanup_schedule_time',
+  'cleanup_protection_enabled',
+  'cleanup_protected_image_labels',
+  'cleanup_protected_volume_labels',
+  'cleanup_option_containers',
+  'cleanup_option_images',
+  'cleanup_option_networks',
+  'cleanup_option_volumes',
+  'cleanup_option_build_cache',
+  'cleanup_last_schedule_key',
+];
 
 router.get('/', (_req: Request, res: Response) => {
   const settings = getAllSettings();

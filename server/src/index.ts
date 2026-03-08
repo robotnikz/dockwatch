@@ -11,6 +11,8 @@ import convertRouter from './routes/convert.js';
 import resourcesRouter from './routes/resources.js';
 import metaRouter from './routes/meta.js';
 import { startScheduler } from './services/scheduler.js';
+import cleanupRouter from './routes/cleanup.js';
+import { startCleanupScheduler } from './services/cleanupScheduler.js';
 import { ensureStacksDir } from './services/docker.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -29,6 +31,7 @@ app.use('/api/stats', statsRouter);
 app.use('/api/convert', convertRouter);
 app.use('/api/resources', resourcesRouter);
 app.use('/api/meta', metaRouter);
+app.use('/api/cleanup', cleanupRouter);
 
 // Serve frontend in production
 const webDist = path.resolve(__dirname, '../../web-dist');
@@ -40,6 +43,7 @@ app.get('*', (_req, res) => {
 async function main() {
   await ensureStacksDir();
   startScheduler();
+  startCleanupScheduler();
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`🐳 DockWatch running on http://0.0.0.0:${PORT}`);

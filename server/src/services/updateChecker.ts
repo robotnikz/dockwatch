@@ -12,21 +12,32 @@ interface RegistryToken {
 /** Parse image reference into registry, repo, tag */
 function parseImage(image: string): { registry: string; repo: string; tag: string } {
   let registry = 'registry-1.docker.io';
-  let repo = image;
+  let ref = image.trim();
   let tag = 'latest';
 
-  // Handle tag
-  const colonIdx = repo.lastIndexOf(':');
-  if (colonIdx > 0 && !repo.substring(colonIdx).includes('/')) {
-    tag = repo.substring(colonIdx + 1);
-    repo = repo.substring(0, colonIdx);
+  // Skip digest-pinned references. They are immutable and cannot have "newer" tags.
+  const digestIdx = ref.indexOf('@');
+  if (digestIdx >= 0) {
+    ref = ref.substring(0, digestIdx);
   }
 
-  // Handle registry
-  if (repo.includes('.') && repo.indexOf('.') < repo.indexOf('/')) {
-    const slashIdx = repo.indexOf('/');
-    registry = repo.substring(0, slashIdx);
-    repo = repo.substring(slashIdx + 1);
+  // Tag separator is the last ':' that appears after the last '/'.
+  const lastSlash = ref.lastIndexOf('/');
+  const lastColon = ref.lastIndexOf(':');
+  if (lastColon > lastSlash) {
+    tag = ref.substring(lastColon + 1);
+    ref = ref.substring(0, lastColon);
+  }
+
+  let repo = ref;
+  const firstSlash = ref.indexOf('/');
+  if (firstSlash > 0) {
+    const firstPart = ref.substring(0, firstSlash);
+    // Docker treats this as explicit registry if it contains '.' or ':' or is localhost.
+    if (firstPart.includes('.') || firstPart.includes(':') || firstPart === 'localhost') {
+      registry = firstPart;
+      repo = ref.substring(firstSlash + 1);
+    }
   }
 
   // Docker Hub short names

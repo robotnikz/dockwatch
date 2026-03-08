@@ -1,5 +1,6 @@
 import { getSetting } from '../db.js';
 import type { UpdateResult } from './updateChecker.js';
+import type { CleanupRunResult } from './cleanup.js';
 
 export async function sendDiscordMessage(content: string, embeds?: object[]): Promise<void> {
   const webhookUrl = getSetting('discord_webhook');
@@ -63,6 +64,32 @@ export async function notifyStackAction(stackName: string, action: string, succe
     color,
     timestamp: new Date().toISOString(),
     footer: { text: 'DockWatch' },
+  }]);
+}
+
+export async function notifyCleanupRun(result: CleanupRunResult): Promise<void> {
+  const notifyActions = getSetting('discord_notify_actions');
+  if (notifyActions !== 'true') return;
+
+  const color = result.success ? 0x57F287 : 0xED4245;
+  const emoji = result.success ? '🧹' : '⚠️';
+
+  const fields = [
+    { name: 'Reason', value: result.reason, inline: true },
+    { name: 'Reclaimed', value: result.reclaimedHuman, inline: true },
+    { name: 'Deleted', value: `c:${result.deleted.containers} i:${result.deleted.images} n:${result.deleted.networks} v:${result.deleted.volumes} b:${result.deleted.buildCache}`, inline: false },
+  ];
+
+  if (result.error) {
+    fields.push({ name: 'Error', value: result.error.slice(0, 900), inline: false });
+  }
+
+  await sendDiscordMessage('', [{
+    title: `${emoji} Docker cleanup ${result.success ? 'completed' : 'failed'}`,
+    color,
+    fields,
+    timestamp: result.finishedAt,
+    footer: { text: 'DockWatch Cleanup' },
   }]);
 }
 

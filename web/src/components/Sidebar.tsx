@@ -128,6 +128,12 @@ export default function Sidebar() {
           Converter
         </NavLink>
         <NavLink 
+          to="/cleanup" 
+          className={({isActive}) => `block rounded-xl px-4 py-2 text-sm font-medium transition ${isActive ? 'text-dock-accent' : 'text-dock-muted hover:text-white'}`}
+        >
+          Cleanup
+        </NavLink>
+        <NavLink 
           to="/settings" 
           className={({isActive}) => `block rounded-xl px-4 py-2 text-sm font-medium transition ${isActive ? 'text-dock-accent' : 'text-dock-muted hover:text-white'}`}
         >

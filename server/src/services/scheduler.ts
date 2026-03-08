@@ -5,6 +5,49 @@ import { composePullAndRecreate, getComposeContent, listStacks } from './docker.
 import { parse } from 'yaml';
 
 let task: cron.ScheduledTask | null = null;
+let isUpdateCycleRunning = false;
+
+async function runUpdateCycle(): Promise<void> {
+  if (isUpdateCycleRunning) {
+    console.log('[Scheduler] Previous update cycle still running, skipping this run.');
+    return;
+  }
+
+  isUpdateCycleRunning = true;
+  console.log(`[Scheduler] Running update check at ${new Date().toISOString()}`);
+  try {
+    const results = await checkAllUpdates();
+    const updates = results.filter(r => r.updateAvailable);
+    console.log(`[Scheduler] Check complete. ${updates.length} updates available.`);
+
+    if (updates.length === 0) return;
+
+    const updatedImages = new Set(updates.map((u) => u.image));
+    const stacks = await listStacks();
+
+    for (const stack of stacks) {
+      try {
+        const compose = await getComposeContent(stack);
+        const shouldAutoUpdate = hasAutoUpdateEnabledServiceWithUpdates(compose, updatedImages);
+
+        if (!shouldAutoUpdate) {
+          console.log(`[Scheduler] No auto-update candidates in stack ${stack}.`);
+          continue;
+        }
+
+        console.log(`[Scheduler] Applying auto-updates for stack ${stack}...`);
+        await composePullAndRecreate(stack);
+        console.log(`[Scheduler] Auto-update complete for stack ${stack}.`);
+      } catch (stackErr) {
+        console.error(`[Scheduler] Auto-update failed for stack ${stack}:`, stackErr);
+      }
+    }
+  } catch (err) {
+    console.error('[Scheduler] Update check failed:', err);
+  } finally {
+    isUpdateCycleRunning = false;
+  }
+}
 
 function isTrueLabel(value: unknown): boolean {
   return String(value).trim().toLowerCase() === 'true';
@@ -55,40 +98,13 @@ export function startScheduler(): void {
   }
 
   task = cron.schedule(cronExpr, async () => {
-    console.log(`[Scheduler] Running update check at ${new Date().toISOString()}`);
-    try {
-      const results = await checkAllUpdates();
-      const updates = results.filter(r => r.updateAvailable);
-      console.log(`[Scheduler] Check complete. ${updates.length} updates available.`);
-
-      if (updates.length === 0) return;
-
-      const updatedImages = new Set(updates.map((u) => u.image));
-      const stacks = await listStacks();
-
-      for (const stack of stacks) {
-        try {
-          const compose = await getComposeContent(stack);
-          const shouldAutoUpdate = hasAutoUpdateEnabledServiceWithUpdates(compose, updatedImages);
-
-          if (!shouldAutoUpdate) {
-            console.log(`[Scheduler] No auto-update candidates in stack ${stack}.`);
-            continue;
-          }
-
-          console.log(`[Scheduler] Applying auto-updates for stack ${stack}...`);
-          await composePullAndRecreate(stack);
-          console.log(`[Scheduler] Auto-update complete for stack ${stack}.`);
-        } catch (stackErr) {
-          console.error(`[Scheduler] Auto-update failed for stack ${stack}:`, stackErr);
-        }
-      }
-    } catch (err) {
-      console.error('[Scheduler] Update check failed:', err);
-    }
+    await runUpdateCycle();
   });
 
   console.log(`[Scheduler] Started with cron: ${cronExpr}`);
+
+  // Populate cache shortly after startup instead of waiting for the first cron window.
+  void runUpdateCycle();
 }
 
 export function stopScheduler(): void {
