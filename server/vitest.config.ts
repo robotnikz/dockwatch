@@ -8,7 +8,11 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'lcov'],
       reportsDirectory: 'coverage',
-      include: ['src/services/resources.ts', 'src/middleware/apiRateLimit.ts'],
+      include: [
+        'src/services/resources.ts',
+        'src/middleware/apiRateLimit.ts',
+        'src/routes/settings.ts',
+      ],
       all: true,
       thresholds: {
         lines: 70,

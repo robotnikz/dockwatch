@@ -9,7 +9,8 @@
     "start": "node dist/index.js",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "perf:sanity": "node scripts/perf-sanity.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",
@@ -27,6 +28,8 @@
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
     "vitest": "^2.1.8",
-    "@vitest/coverage-v8": "^2.1.8"
+    "@vitest/coverage-v8": "^2.1.8",
+    "supertest": "^7.0.0",
+    "@types/supertest": "^6.0.3"
   }
 }
