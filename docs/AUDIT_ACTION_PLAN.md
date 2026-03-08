@@ -36,7 +36,7 @@ Current mode: `Audit complete, implementation deferred until explicit start sign
 
 ### P1 - Performance
 - [ ] Add baseline capture file for `perf:api` outputs (req/s + p95 latency).
-- [ ] Add optional CI workflow dispatch for `perf:api` and upload benchmark artifact.
+- [x] Add optional CI workflow dispatch for `perf:api` and upload benchmark artifact.
 - [ ] Add threshold warnings (non-blocking) for regressions vs baseline (+/- percentage).
 
 ### P2 - Architecture and Maintainability

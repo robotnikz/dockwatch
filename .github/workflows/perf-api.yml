@@ -1,0 +1,32 @@
+name: Perf API Benchmark
+
+on:
+  workflow_dispatch:
+
+jobs:
+  perf-api:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies (Server)
+        working-directory: ./server
+        run: npm ci
+
+      - name: Run API benchmark
+        working-directory: ./server
+        run: npm run perf:api | tee perf-api-output.txt
+
+      - name: Upload benchmark artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-api-output
+          path: server/perf-api-output.txt
+          if-no-files-found: error
