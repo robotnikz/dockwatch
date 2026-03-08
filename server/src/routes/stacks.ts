@@ -9,7 +9,7 @@ import {
   composeDown,
   composeRestart,
   composePull,
-  composePullAndRecreate,
+  composeManualUpdate,
   composeLogs,
   composePs,
   getStackImages,
@@ -195,14 +195,14 @@ router.post('/:name/update', async (req: Request<NameParams>, res: Response) => 
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive',
       });
-      await composePullAndRecreate(req.params.name, (chunk) => {
+      await composeManualUpdate(req.params.name, (chunk) => {
         res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
       });
       await notifyStackAction(req.params.name, 'updated', true);
       res.write(`data: ${JSON.stringify({ ok: true, finish: true })}\n\n`);
       res.end();
     } else {
-      const output = await composePullAndRecreate(req.params.name);
+      const output = await composeManualUpdate(req.params.name);
       await notifyStackAction(req.params.name, 'updated', true);
       res.json({ ok: true, output });
     }

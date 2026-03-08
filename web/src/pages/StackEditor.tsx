@@ -15,6 +15,33 @@ function normalizeTerminalText(input: string): string {
     .replace(/[\x00-\x08\x0b\x0c\x0e-\x1a\x1c-\x1f\x7f]/g, '');
 }
 
+function appendStreamChunk(lines: string[], currentLine: string, chunk: string): { lines: string[]; currentLine: string } {
+  const normalized = chunk
+    .replace(/\r\n/g, '\n')
+    .replace(/[\x00-\x08\x0b\x0c\x0e-\x1a\x1c-\x1f\x7f]/g, '');
+
+  const nextLines = [...lines];
+  let nextCurrent = currentLine;
+
+  for (const char of normalized) {
+    if (char === '\r') {
+      // Docker progress lines often use CR to update one line in place.
+      nextCurrent = '';
+      continue;
+    }
+    if (char === '\n') {
+      if (nextCurrent.length > 0) {
+        nextLines.push(nextCurrent);
+      }
+      nextCurrent = '';
+      continue;
+    }
+    nextCurrent += char;
+  }
+
+  return { lines: nextLines, currentLine: nextCurrent };
+}
+
 const TEMPLATE = `services:
   app:
     image: nginx:latest
@@ -69,8 +96,11 @@ export default function StackEditor() {
   const [logs, setLogs] = useState<string>('');
   const [error, setError] = useState('');
   const logsEndRef = useRef<HTMLDivElement>(null);
-  const actionStreamEndRef = useRef<HTMLDivElement>(null);
+  const actionStreamContainerRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollActionRef = useRef(true);
   const hideActionStreamTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const actionLinesRef = useRef<string[]>([]);
+  const actionCurrentLineRef = useRef('');
   const composeTextareaRef = useRef<HTMLTextAreaElement>(null);
   const composeHighlightRef = useRef<HTMLPreElement>(null);
 
@@ -160,10 +190,12 @@ export default function StackEditor() {
   }, [logs]);
 
   useEffect(() => {
-    if (actionStream.visible && actionStreamEndRef.current) {
-      actionStreamEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    if (!actionStream.visible || !actionStreamContainerRef.current || !shouldAutoScrollActionRef.current) {
+      return;
     }
-  }, [actionStream]);
+    const container = actionStreamContainerRef.current;
+    container.scrollTop = container.scrollHeight;
+  }, [actionStream.content, actionStream.visible]);
 
   useEffect(() => {
     return () => {
@@ -201,17 +233,25 @@ export default function StackEditor() {
       content: 'Connecting...\n',
       tone: 'running',
     });
+    actionLinesRef.current = ['Connecting...'];
+    actionCurrentLineRef.current = '';
+    shouldAutoScrollActionRef.current = true;
     
     try {
       await streamStackAction(name, action, (chunk) => {
+        const parsed = appendStreamChunk(actionLinesRef.current, actionCurrentLineRef.current, chunk);
+        actionLinesRef.current = parsed.lines;
+        actionCurrentLineRef.current = parsed.currentLine;
+        const content = [...parsed.lines, parsed.currentLine].filter(Boolean).join('\n') + '\n';
         setActionStream((prev) => ({
           ...prev,
           visible: true,
-          content: prev.content + chunk,
+          content,
         }));
       });
       await fetchStackInfo();
       await fetchLogs();
+      window.dispatchEvent(new CustomEvent('dockwatch:stacks-changed'));
       setActionStream((prev) => ({
         ...prev,
         tone: 'success',
@@ -240,6 +280,7 @@ export default function StackEditor() {
     setActionLoading('delete');
     try {
       await deleteStack(name);
+      window.dispatchEvent(new CustomEvent('dockwatch:stacks-changed'));
       navigate('/');
     } catch (err: any) {
       setError(err.message);
@@ -262,6 +303,7 @@ export default function StackEditor() {
     setError('');
     try {
       await saveStack(nextName, content, envContent);
+      window.dispatchEvent(new CustomEvent('dockwatch:stacks-changed'));
       if (isNew) {
         navigate(`/stack/${nextName}`);
       } else {
@@ -378,12 +420,20 @@ export default function StackEditor() {
               Hide
             </button>
           </div>
-          <div className="max-h-[280px] overflow-y-auto rounded-xl border border-dock-border/50 bg-black p-3">
+          <div
+            ref={actionStreamContainerRef}
+            onScroll={() => {
+              const el = actionStreamContainerRef.current;
+              if (!el) return;
+              const nearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+              shouldAutoScrollActionRef.current = nearBottom;
+            }}
+            className="max-h-[280px] overflow-y-auto rounded-xl border border-dock-border/50 bg-black p-3"
+          >
             <div
               className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-gray-300"
               dangerouslySetInnerHTML={{ __html: ansiUp.ansi_to_html(actionStream.content) }}
             />
-            <div ref={actionStreamEndRef} />
           </div>
         </div>
       ) : null}

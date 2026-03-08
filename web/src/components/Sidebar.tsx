@@ -20,8 +20,17 @@ export default function Sidebar() {
 
   useEffect(() => {
     fetchStacks();
+
+    const onStacksChanged = () => {
+      fetchStacks();
+    };
+
+    window.addEventListener('dockwatch:stacks-changed', onStacksChanged);
     const id = setInterval(fetchStacks, 10000); // 10s auto-refresh for sidebar
-    return () => clearInterval(id);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('dockwatch:stacks-changed', onStacksChanged);
+    };
   }, []);
 
   useEffect(() => {

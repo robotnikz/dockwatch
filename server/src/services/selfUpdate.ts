@@ -7,6 +7,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_UPDATE_DIR = '/opt/dockwatch';
 const DEV_FALLBACK_UPDATE_DIR = path.resolve(__dirname, '../../..');
 const STACKS_DIR = String(process.env.DOCKWATCH_STACKS || '/opt/stacks').trim() || '/opt/stacks';
+const DATA_DIR = String(process.env.DOCKWATCH_DATA || '').trim();
+const COMPOSE_FILE_CANDIDATES = ['docker-compose.yml', 'docker-compose.yaml', 'compose.yaml', 'compose.yml'];
 
 export interface SelfUpdateInfo {
   enabled: boolean;
@@ -18,9 +20,12 @@ export interface SelfUpdateInfo {
 
 function getCandidateWorkingDirs(): string[] {
   const configured = String(process.env.DOCKWATCH_SELF_UPDATE_DIR || '').trim();
+  const dataParent = DATA_DIR ? path.dirname(DATA_DIR) : '';
   const candidates = [
     configured,
     DEFAULT_UPDATE_DIR,
+    dataParent,
+    process.cwd(),
     DEV_FALLBACK_UPDATE_DIR,
     path.join(STACKS_DIR, 'dockwatch'),
     '/opt/stacks/dockwatch',
@@ -28,17 +33,38 @@ function getCandidateWorkingDirs(): string[] {
 
   const uniq = new Set<string>();
   for (const candidate of candidates) {
-    uniq.add(path.resolve(candidate));
+    const resolved = path.resolve(candidate);
+    uniq.add(resolved);
+    try {
+      uniq.add(fs.realpathSync(resolved));
+    } catch {
+      // Ignore non-existing/unresolvable paths here.
+    }
   }
   return [...uniq];
 }
 
 function resolveComposeFile(dir: string): string | null {
-  const candidates = ['docker-compose.yml', 'compose.yaml', 'compose.yml'];
-  for (const candidate of candidates) {
+  for (const candidate of COMPOSE_FILE_CANDIDATES) {
     if (fs.existsSync(path.join(dir, candidate))) return candidate;
   }
   return null;
+}
+
+function getComposeDebugSummary(dirs: string[]): string {
+  return dirs
+    .map((dir) => {
+      const matches = COMPOSE_FILE_CANDIDATES.filter((file) => fs.existsSync(path.join(dir, file)));
+      if (matches.length > 0) {
+        return `${dir} (found: ${matches.join(', ')})`;
+      }
+      return `${dir} (checked: ${COMPOSE_FILE_CANDIDATES.join(', ')})`;
+    })
+    .join('; ');
+}
+
+function shQuote(value: string): string {
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
 export function getSelfUpdateInfo(): SelfUpdateInfo {
@@ -82,7 +108,7 @@ export function getSelfUpdateInfo(): SelfUpdateInfo {
     supported: false,
     workingDir: dirs[0],
     composeFile: null,
-    reason: `No compose file found in candidates: ${dirs.join(', ')}`,
+    reason: `No compose file found in candidates: ${dirs.join(', ')}. Details: ${getComposeDebugSummary(dirs)}`,
   };
 }
 
@@ -94,9 +120,9 @@ export function triggerSelfUpdate(): { accepted: boolean; reloadAfterSeconds: nu
 
   const cmd = [
     'sleep 1',
-    'docker compose down',
-    'docker compose pull',
-    'docker compose up -d',
+    `docker compose -f ${shQuote(path.join(info.workingDir, info.composeFile))} down`,
+    `docker compose -f ${shQuote(path.join(info.workingDir, info.composeFile))} pull`,
+    `docker compose -f ${shQuote(path.join(info.workingDir, info.composeFile))} up -d`,
   ].join(' && ');
 
   const child = spawn('sh', ['-lc', cmd], {

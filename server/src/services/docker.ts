@@ -188,6 +188,28 @@ export async function composePullAndRecreate(name: string, onChunk?: (chunk: str
   return pullOutput + upResult.stdout + upResult.stderr;
 }
 
+/**
+ * Manual stack update from UI: always do down -> pull -> up -d for all services.
+ * This intentionally ignores dockwatch.update.exclude labels.
+ */
+export async function composeManualUpdate(name: string, onChunk?: (chunk: string) => void): Promise<string> {
+  let output = '';
+
+  if (onChunk) onChunk('[Dockwatch] Manual update: docker compose down\n');
+  const downResult = await runCompose(name, ['down'], onChunk);
+  output += downResult.stdout + downResult.stderr + '\n';
+
+  if (onChunk) onChunk('[Dockwatch] Manual update: docker compose pull\n');
+  const pullResult = await runCompose(name, ['pull'], onChunk);
+  output += pullResult.stdout + pullResult.stderr + '\n';
+
+  if (onChunk) onChunk('[Dockwatch] Manual update: docker compose up -d\n');
+  const upResult = await runCompose(name, ['up', '-d', '--remove-orphans'], onChunk);
+  output += upResult.stdout + upResult.stderr;
+
+  return output;
+}
+
 /** Get images used by running containers for a stack */
 export async function getStackImages(name: string): Promise<string[]> {
   try {
