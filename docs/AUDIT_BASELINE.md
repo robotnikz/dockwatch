@@ -29,6 +29,8 @@ Branch: `audit/performance-architecture-security-coverage`
 - Added API load sanity benchmark script (`perf:api`) using autocannon against running local server endpoints.
 - Wired `perf:sanity` into CI as a non-blocking signal to continuously surface perf drift.
 - Added manual CI benchmark workflow for `perf:api` with benchmark output artifact upload.
+- Added `docs/PERF_API_BASELINE.md` with initial API throughput/latency baseline snapshot.
+- Added non-blocking CI threshold warnings in `perf-api` workflow to surface req/s drops and latency increases.
 - Added stack action streaming route tests (SSE success and error paths) for operational reliability.
 - Added scheduler decision-path tests for auto-update exclusion behavior.
 - Added updates route tests for cached retrieval, full check trigger, single-image check, and error paths.

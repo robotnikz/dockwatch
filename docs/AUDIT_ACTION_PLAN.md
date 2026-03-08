@@ -35,9 +35,9 @@ Current mode: `Audit complete, implementation deferred until explicit start sign
 - [ ] Add test for cleanup reset conflict race (run state flips between check and reset).
 
 ### P1 - Performance
-- [ ] Add baseline capture file for `perf:api` outputs (req/s + p95 latency).
+- [x] Add baseline capture file for `perf:api` outputs (req/s + p95 latency).
 - [x] Add optional CI workflow dispatch for `perf:api` and upload benchmark artifact.
-- [ ] Add threshold warnings (non-blocking) for regressions vs baseline (+/- percentage).
+- [x] Add threshold warnings (non-blocking) for regressions vs baseline (+/- percentage).
 
 ### P2 - Architecture and Maintainability
 - [ ] Extract shared route error handling helper to reduce repeated `try/catch` response patterns.
