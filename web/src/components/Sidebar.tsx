@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, type MouseEvent } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { getStacks, getAppVersionStatus, triggerSelfUpdate, type AppVersionStatus, type Stack } from '../api';
 
@@ -47,7 +47,9 @@ export default function Sidebar() {
     return () => clearInterval(id);
   }, [reloadCountdown]);
 
-  const onUpdateBadgeClick = () => {
+  const onUpdateBadgeClick = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
     if (!appVersion?.updateAvailable) return;
     setUpdateError(null);
     setShowUpdateModal(true);
@@ -78,7 +80,7 @@ export default function Sidebar() {
           type="button"
           onClick={onUpdateBadgeClick}
           className="cursor-pointer rounded-full border border-amber-400/40 bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-300 transition hover:bg-amber-500/30 hover:text-amber-200"
-          title={selfUpdateSupported ? 'Run DockWatch self update' : 'Open release page'}
+          title="View release notes and update options"
         >
           Update Available - Click
         </button>

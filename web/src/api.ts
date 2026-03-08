@@ -82,6 +82,8 @@ export interface ContainerStats {
 export interface HostInfo {
   containers_running: number;
   containers_total: number;
+  stack_containers_running: number;
+  stack_containers_total: number;
   images: number;
   server_version: string;
   os: string;

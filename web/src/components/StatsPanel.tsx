@@ -218,7 +218,7 @@ export default function StatsPanel() {
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           <StatCard
             label="Containers"
-            value={`${host.containers_running} / ${host.containers_total}`}
+            value={`${host.stack_containers_running ?? host.containers_running} / ${host.stack_containers_total ?? host.containers_total}`}
             sub={`${containers.length} reporting live stats`}
             accent="text-dock-green"
           />

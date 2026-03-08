@@ -9,10 +9,12 @@ const repoRootPath = path.resolve(__dirname, '../../..');
 
 const GITHUB_OWNER = process.env.DOCKWATCH_GITHUB_OWNER || 'robotnikz';
 const GITHUB_REPO = process.env.DOCKWATCH_GITHUB_REPO || 'dockwatch';
+const GITHUB_DEFAULT_BRANCH = process.env.DOCKWATCH_GITHUB_DEFAULT_BRANCH || 'main';
 const GITHUB_URL = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}`;
 const RELEASE_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
 const TAGS_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/tags?per_page=30`;
 const COMPARE_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/compare`;
+const COMMITS_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/commits`;
 const CHECK_TTL_MS = 60 * 60 * 1000; // 1 hour
 const TAG_PAGES_TO_SCAN = 10;
 
@@ -213,9 +215,9 @@ function isSemverLike(version: string): boolean {
   return /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(normalizeVersion(version));
 }
 
-async function isCurrentBehindLatestRelease(latestVersion: string, currentRevision: string): Promise<boolean | null> {
+async function isCurrentBehind(baseRef: string, headRef: string): Promise<boolean | null> {
   try {
-    const response = await fetch(`${COMPARE_API_URL}/v${latestVersion}...${currentRevision}`, {
+    const response = await fetch(`${COMPARE_API_URL}/${baseRef}...${headRef}`, {
       headers: getGithubHeaders(),
     });
     if (!response.ok) {
@@ -234,6 +236,32 @@ async function isCurrentBehindLatestRelease(latestVersion: string, currentRevisi
   }
 }
 
+interface BranchHead {
+  sha: string;
+  htmlUrl: string | null;
+}
+
+async function fetchDefaultBranchHead(): Promise<BranchHead> {
+  const response = await fetch(`${COMMITS_API_URL}/${encodeURIComponent(GITHUB_DEFAULT_BRANCH)}`, {
+    headers: getGithubHeaders(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`GitHub default branch lookup failed (${response.status})`);
+  }
+
+  const data = (await response.json()) as { sha?: string; html_url?: string };
+  const sha = String(data.sha || '').trim();
+  if (!sha) {
+    throw new Error('GitHub default branch lookup did not include a commit sha');
+  }
+
+  return {
+    sha,
+    htmlUrl: data.html_url || null,
+  };
+}
+
 export async function getAppVersionStatus(force = false): Promise<AppVersionStatus> {
   const now = Date.now();
   if (!force && cache && now - lastCheckMs < CHECK_TTL_MS) {
@@ -244,8 +272,31 @@ export async function getAppVersionStatus(force = false): Promise<AppVersionStat
   const currentRevision = (process.env.DOCKWATCH_REVISION || '').trim() || null;
 
   try {
-    const { latestVersion, releaseUrl, releaseNotes } = await fetchLatestReleaseVersion();
+    let latestVersion: string | null = null;
+    let releaseUrl: string | null = null;
+    let releaseNotes: string | null = null;
     let displayVersion = currentVersion;
+    let updateAvailable = false;
+
+    try {
+      const releaseInfo = await fetchLatestReleaseVersion();
+      latestVersion = releaseInfo.latestVersion;
+      releaseUrl = releaseInfo.releaseUrl;
+      releaseNotes = releaseInfo.releaseNotes;
+    } catch {
+      // Semver release metadata can be unavailable for branch builds.
+      // Fall back to comparing current revision with default branch head.
+      if (currentRevision) {
+        try {
+          const head = await fetchDefaultBranchHead();
+          const behind = await isCurrentBehind(head.sha, currentRevision);
+          updateAvailable = behind === true;
+          releaseUrl = head.htmlUrl || `${GITHUB_URL}/commits/${GITHUB_DEFAULT_BRANCH}`;
+        } catch {
+          // Keep a non-fatal state when remote metadata cannot be reached.
+        }
+      }
+    }
 
     if (!isSemverLike(displayVersion) && currentRevision) {
       const resolvedVersion = await resolveVersionFromRevision(currentRevision);
@@ -254,12 +305,11 @@ export async function getAppVersionStatus(force = false): Promise<AppVersionStat
       }
     }
 
-    let updateAvailable = false;
-
-    if (isSemverLike(displayVersion)) {
+    if (latestVersion && isSemverLike(displayVersion)) {
       updateAvailable = compareVersions(latestVersion, displayVersion) > 0;
     } else if (currentRevision) {
-      const behind = await isCurrentBehindLatestRelease(latestVersion, currentRevision);
+      const baseRef = latestVersion ? `v${latestVersion}` : GITHUB_DEFAULT_BRANCH;
+      const behind = await isCurrentBehind(baseRef, currentRevision);
       if (behind !== null) {
         updateAvailable = behind;
       }

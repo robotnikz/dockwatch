@@ -34,11 +34,18 @@ export default function StackEditor() {
   
   const [isEditing, setIsEditing] = useState(isNew);
   const [loading, setLoading] = useState(!isNew);
-  const [streamTitle, setStreamTitle] = useState<string | null>(null);
+  const [actionStream, setActionStream] = useState<{
+    visible: boolean;
+    title: string;
+    content: string;
+    tone: 'running' | 'success' | 'error';
+  }>({ visible: false, title: '', content: '', tone: 'running' });
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [logs, setLogs] = useState<string>('');
   const [error, setError] = useState('');
   const logsEndRef = useRef<HTMLDivElement>(null);
+  const actionStreamEndRef = useRef<HTMLDivElement>(null);
+  const hideActionStreamTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchStackInfo = async () => {
     if (!name) return;
@@ -87,11 +94,17 @@ export default function StackEditor() {
     } else {
       setLoading(false);
       setStackData(null);
+      setStackName('');
       setLogs('');
+      setError('');
+      setEnvContent('');
+      setActiveTab('compose.yaml');
       const prefill = sessionStorage.getItem('dockwatch_prefill');
       if (prefill) {
         setContent(prefill);
         sessionStorage.removeItem('dockwatch_prefill');
+      } else {
+        setContent(TEMPLATE);
       }
       setIsEditing(true);
     }
@@ -102,6 +115,20 @@ export default function StackEditor() {
         logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
   }, [logs]);
+
+  useEffect(() => {
+    if (actionStream.visible && actionStreamEndRef.current) {
+      actionStreamEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [actionStream]);
+
+  useEffect(() => {
+    return () => {
+      if (hideActionStreamTimer.current) {
+        clearTimeout(hideActionStreamTimer.current);
+      }
+    };
+  }, []);
 
   const handleAction = async (action: 'up' | 'down' | 'restart' | 'update' | 'delete') => {
     if (!name) return;
@@ -128,21 +155,47 @@ export default function StackEditor() {
       restart: 'Restarting stack...',
       update: 'Updating stack...'
     };
-    
-    setStreamTitle(titleMap[action]);
-    setLogs('');
+
+    if (hideActionStreamTimer.current) {
+      clearTimeout(hideActionStreamTimer.current);
+      hideActionStreamTimer.current = null;
+    }
+
+    setActionStream({
+      visible: true,
+      title: titleMap[action],
+      content: 'Connecting...\n',
+      tone: 'running',
+    });
     
     try {
       await streamStackAction(name, action, (chunk) => {
-        setLogs(prev => prev + chunk);
+        setActionStream((prev) => ({
+          ...prev,
+          visible: true,
+          content: prev.content + chunk,
+        }));
       });
       await fetchStackInfo();
       await fetchLogs();
+      setActionStream((prev) => ({
+        ...prev,
+        tone: 'success',
+        title: `${titleMap[action].replace('...', '')} completed`,
+      }));
     } catch (err: any) {
-      setLogs(prev => prev + '\n[Error: ' + err.message + ']');
+      setActionStream((prev) => ({
+        ...prev,
+        visible: true,
+        tone: 'error',
+        title: `${titleMap[action].replace('...', '')} failed`,
+        content: `${prev.content}\n[Error: ${err.message}]\n`,
+      }));
       setError(err.message);
     } finally {
-      setStreamTitle(null);
+      hideActionStreamTimer.current = setTimeout(() => {
+        setActionStream((prev) => ({ ...prev, visible: false }));
+      }, 10_000);
       setActionLoading(null);
     }
   };
@@ -248,6 +301,37 @@ export default function StackEditor() {
         </div>
       )}
 
+      {actionStream.visible ? (
+        <div className="rounded-[1.25rem] border border-dock-border/60 bg-[#0c0d12] p-4">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <h2 className={[
+              'text-sm font-semibold',
+              actionStream.tone === 'error'
+                ? 'text-dock-red'
+                : actionStream.tone === 'success'
+                  ? 'text-dock-green'
+                  : 'text-dock-accent',
+            ].join(' ')}>
+              {actionStream.title}
+            </h2>
+            <button
+              type="button"
+              onClick={() => setActionStream((prev) => ({ ...prev, visible: false }))}
+              className="rounded-lg border border-dock-border px-2 py-1 text-xs text-dock-muted hover:text-white"
+            >
+              Hide
+            </button>
+          </div>
+          <div className="max-h-[280px] overflow-y-auto rounded-xl border border-dock-border/50 bg-black p-3">
+            <div
+              className="whitespace-pre-wrap break-words font-mono text-xs leading-relaxed text-gray-300"
+              dangerouslySetInnerHTML={{ __html: ansiUp.ansi_to_html(actionStream.content) }}
+            />
+            <div ref={actionStreamEndRef} />
+          </div>
+        </div>
+      ) : null}
+
       {/* Main Content Area */}
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Left Side: Services & Terminal */}
@@ -284,12 +368,7 @@ export default function StackEditor() {
 
               <div className="flex-1 flex flex-col min-h-[300px]">
                 <div className="flex items-center justify-between mb-3">
-                    <div>
-                      <h2 className="text-xl font-medium text-white tracking-tight">Terminal</h2>
-                      {actionLoading && streamTitle ? (
-                        <p className="mt-1 text-xs text-dock-accent">{streamTitle}</p>
-                      ) : null}
-                    </div>
+                    <h2 className="text-xl font-medium text-white tracking-tight">Terminal</h2>
                     <button onClick={fetchLogs} className="text-xs text-dock-accent hover:underline">Refresh</button>
                 </div>
                 <div className="flex-1 rounded-[1.25rem] bg-[#0c0d12] p-4 border border-dock-border/50 overflow-hidden relative">
