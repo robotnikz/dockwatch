@@ -311,7 +311,17 @@ export interface AppVersionStatus {
   githubUrl: string;
   releaseUrl: string | null;
   checkFailed: boolean;
+  selfUpdate?: {
+    enabled: boolean;
+    supported: boolean;
+    workingDir: string;
+    composeFile: string | null;
+    reason?: string;
+  };
 }
 
 export const getAppVersionStatus = (force = false) =>
   request<AppVersionStatus>(`/meta/version${force ? '?force=true' : ''}`);
+
+export const triggerSelfUpdate = () =>
+  request<{ accepted: boolean; reloadAfterSeconds: number }>('/meta/self-update', { method: 'POST' });

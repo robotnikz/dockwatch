@@ -243,7 +243,7 @@ export default function StatsPanel() {
                   <th className="hidden px-4 py-3 text-right font-medium lg:table-cell cursor-pointer group hover:text-dock-accent transition select-none" onClick={() => handleSort('block_io')}><SortIcon col="block_io"/> Block I/O</th>
                   <th className="hidden px-4 py-3 text-right font-medium md:table-cell cursor-pointer group hover:text-dock-accent transition select-none" onClick={() => handleSort('pids')}><SortIcon col="pids"/> PIDs</th>
                   <th className="px-4 py-3 text-right font-medium">Check</th>
-                  <th className="px-4 py-3 text-right font-medium">Auto</th>
+                  <th className="px-4 py-3 text-right font-medium">Update</th>
                 </tr>
               </thead>
               <tbody>
@@ -279,7 +279,7 @@ export default function StatsPanel() {
                           onClick={() => togglePolicy(container.name, 'check')}
                           disabled={Boolean(toggling[`${container.name}:check`])}
                           className="inline-flex items-center justify-end disabled:opacity-60"
-                          title={updateMeta[container.name].checkExcluded ? 'Container wird bei Check for Updates ignoriert' : 'Container wird bei Check for Updates berücksichtigt'}
+                          title={updateMeta[container.name].checkExcluded ? 'Container is excluded from update checks' : 'Container is included in update checks'}
                         >
                           <span className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${updateMeta[container.name].checkExcluded ? 'bg-dock-border/70' : 'bg-dock-accent/80'}`}>
                             <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${updateMeta[container.name].checkExcluded ? 'translate-x-1' : 'translate-x-6'}`} />
@@ -296,7 +296,7 @@ export default function StatsPanel() {
                           onClick={() => togglePolicy(container.name, 'auto')}
                           disabled={Boolean(toggling[`${container.name}:auto`])}
                           className="inline-flex items-center justify-end disabled:opacity-60"
-                          title={updateMeta[container.name].autoUpdateExcluded ? 'Container wird beim Update-Run nicht automatisch aktualisiert' : 'Container wird beim Update-Run automatisch berücksichtigt'}
+                          title={updateMeta[container.name].autoUpdateExcluded ? 'Container is excluded from automatic update runs' : 'Container is included in automatic update runs'}
                         >
                           <span className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${updateMeta[container.name].autoUpdateExcluded ? 'bg-dock-border/70' : 'bg-dock-accent/80'}`}>
                             <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${updateMeta[container.name].autoUpdateExcluded ? 'translate-x-1' : 'translate-x-6'}`} />

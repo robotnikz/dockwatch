@@ -88,6 +88,13 @@ export interface AppVersionStatus {
   githubUrl: string;
   releaseUrl: string | null;
   checkFailed: boolean;
+  selfUpdate?: {
+    enabled: boolean;
+    supported: boolean;
+    workingDir: string;
+    composeFile: string | null;
+    reason?: string;
+  };
 }
 
 let cache: AppVersionStatus | null = null;

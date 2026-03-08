@@ -8,6 +8,8 @@ const router = Router();
 const ALLOWED_KEYS = [
   'discord_webhook',
   'discord_notify_actions',
+  'discord_notify_container_updates',
+  'discord_notify_prune_messages',
   'check_cron',
   'update_exclusions',
   'prunemate_url',

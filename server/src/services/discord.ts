@@ -2,6 +2,12 @@ import { getSetting } from '../db.js';
 import type { UpdateResult } from './updateChecker.js';
 import type { CleanupRunResult } from './cleanup.js';
 
+function isEnabledSetting(key: string, defaultValue = true): boolean {
+  const value = getSetting(key);
+  if (value == null || value === '') return defaultValue;
+  return String(value).trim().toLowerCase() === 'true';
+}
+
 export async function sendDiscordMessage(content: string, embeds?: object[]): Promise<void> {
   const webhookUrl = getSetting('discord_webhook');
   if (!webhookUrl) return;
@@ -35,6 +41,7 @@ export async function sendDiscordMessage(content: string, embeds?: object[]): Pr
 
 export async function notifyUpdatesAvailable(updates: UpdateResult[]): Promise<void> {
   if (updates.length === 0) return;
+  if (!isEnabledSetting('discord_notify_container_updates', true)) return;
 
   const fields = updates.map(u => ({
     name: u.image,
@@ -68,8 +75,7 @@ export async function notifyStackAction(stackName: string, action: string, succe
 }
 
 export async function notifyCleanupRun(result: CleanupRunResult): Promise<void> {
-  const notifyActions = getSetting('discord_notify_actions');
-  if (notifyActions !== 'true') return;
+  if (!isEnabledSetting('discord_notify_prune_messages', true)) return;
 
   const color = result.success ? 0x57F287 : 0xED4245;
   const emoji = result.success ? '🧹' : '⚠️';

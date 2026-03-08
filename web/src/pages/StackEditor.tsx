@@ -119,10 +119,10 @@ export default function StackEditor() {
     setError('');
     
     const titleMap: Record<string, string> = {
-      up: 'Starte Stack...',
-      down: 'Stoppe Stack...',
-      restart: 'Starte Stack neu...',
-      update: 'Aktualisiere Stack...'
+      up: 'Starting stack...',
+      down: 'Stopping stack...',
+      restart: 'Restarting stack...',
+      update: 'Updating stack...'
     };
     
     setStreamModal({ show: true, logs: '', title: titleMap[action] });
@@ -137,7 +137,7 @@ export default function StackEditor() {
       await fetchStackInfo();
       await fetchLogs();
     } catch (err: any) {
-      setStreamModal(prev => ({ ...prev, logs: prev.logs + '\n[Fehler: ' + err.message + ']' }));
+      setStreamModal(prev => ({ ...prev, logs: prev.logs + '\n[Error: ' + err.message + ']' }));
       setError(err.message);
     } finally {
       setActionLoading(null);
@@ -193,7 +193,7 @@ export default function StackEditor() {
             </div>
             
             <div className="flex-1 bg-black rounded-xl p-4 overflow-y-auto font-mono text-sm text-gray-300 relative border border-dock-border/50">
-              <div className="whitespace-pre-wrap break-words" dangerouslySetInnerHTML={{ __html: ansiUp.ansi_to_html(streamModal.logs || 'Verbinde...') }}></div>
+              <div className="whitespace-pre-wrap break-words" dangerouslySetInnerHTML={{ __html: ansiUp.ansi_to_html(streamModal.logs || 'Connecting...') }}></div>
               <div ref={streamEndRef} />
             </div>
             
@@ -203,7 +203,7 @@ export default function StackEditor() {
                   onClick={() => setStreamModal({ show: false, logs: '', title: '' })}
                   className="bg-dock-panel hover:bg-dock-border text-white px-6 py-2 rounded-xl transition font-medium"
                 >
-                  Schließen
+                  Close
                 </button>
               </div>
             )}
@@ -216,7 +216,7 @@ export default function StackEditor() {
         <div className="flex items-center gap-3">
           {!isNew && (
             <span className={`px-3 py-1 rounded-full text-xs font-bold ${isActive ? 'bg-dock-accent text-dock-bg' : 'bg-dock-border text-white'}`}>
-              {isActive ? 'aktiv' : 'inaktiv'}
+              {isActive ? 'active' : 'inactive'}
             </span>
           )}
           {isNew ? (
@@ -224,7 +224,7 @@ export default function StackEditor() {
               type="text"
               value={stackName}
               onChange={(e) => setStackName(e.target.value)}
-              placeholder="Neuer Stackname"
+              placeholder="New stack name"
               className="bg-transparent text-3xl font-bold tracking-tight text-white outline-none border-b border-dock-border focus:border-dock-accent transition placeholder-dock-muted"
             />
           ) : (
@@ -236,31 +236,31 @@ export default function StackEditor() {
           {isEditing ? (
             <>
               <button onClick={handleSave} disabled={!!actionLoading} className="rounded-xl bg-dock-text px-4 py-2 text-sm font-bold text-dock-bg transition hover:bg-white disabled:opacity-50">
-                {actionLoading === 'save' ? 'Speichern...' : 'Speichern'}
+                {actionLoading === 'save' ? 'Saving...' : 'Save'}
               </button>
               {!isNew && (
                 <button onClick={() => setIsEditing(false)} disabled={!!actionLoading} className="rounded-xl bg-dock-panel px-4 py-2 text-sm font-bold text-white transition hover:bg-dock-border disabled:opacity-50">
-                  Abbrechen
+                  Cancel
                 </button>
               )}
             </>
           ) : (
             <>
               <button onClick={() => setIsEditing(true)} className="flex items-center gap-2 rounded-xl bg-dock-panel px-4 py-2 text-sm font-bold text-white transition hover:bg-dock-border">
-                <span>✏️</span> Bearbeiten
+                <span>✏️</span> Edit
               </button>
               <button disabled={!!actionLoading} onClick={() => handleAction('restart')} className="flex items-center gap-2 rounded-xl bg-dock-panel px-4 py-2 text-sm font-bold text-white transition hover:bg-dock-border disabled:opacity-50">
-                <span>🔄</span> Neustarten
+                <span>🔄</span> Restart
               </button>
               <button disabled={!!actionLoading} onClick={() => handleAction('update')} className="flex items-center gap-2 rounded-xl bg-dock-panel px-4 py-2 text-sm font-bold text-white transition hover:bg-dock-border disabled:opacity-50">
-                <span>☁️</span> Aktualisieren
+                <span>☁️</span> Update
               </button>
               <button disabled={!!actionLoading} onClick={() => handleAction('down')} className="flex items-center gap-2 rounded-xl bg-dock-panel px-4 py-2 text-sm font-bold text-white transition hover:bg-dock-border disabled:opacity-50">
-                <span>⏹</span> Anhalten
+                <span>⏹</span> Stop
               </button>
               <div className="flex-1" />
               <button disabled={!!actionLoading} onClick={() => handleAction('delete')} className="flex items-center gap-2 rounded-xl bg-dock-red text-dock-bg px-4 py-2 text-sm font-bold transition hover:bg-red-400 disabled:opacity-50">
-                <span>🗑️</span> Löschen
+                <span>🗑️</span> Delete
               </button>
             </>
           )}
@@ -298,9 +298,9 @@ export default function StackEditor() {
                     </div>
                   )) : (
                     <div className="rounded-[1.25rem] bg-dock-card p-6 text-center border border-dock-border/50">
-                      <p className="text-dock-muted font-medium">Keine Container gefunden.</p>
+                      <p className="text-dock-muted font-medium">No containers found.</p>
                       <button onClick={() => handleAction('up')} className="mt-3 rounded-lg bg-dock-accent/10 px-4 py-2 text-sm font-semibold text-dock-accent transition hover:bg-dock-accent hover:text-dock-bg">
-                        Stack starten
+                        Start stack
                       </button>
                     </div>
           )}
@@ -310,11 +310,11 @@ export default function StackEditor() {
               <div className="flex-1 flex flex-col min-h-[300px]">
                 <div className="flex items-center justify-between mb-3">
                     <h2 className="text-xl font-medium text-white tracking-tight">Terminal</h2>
-                    <button onClick={fetchLogs} className="text-xs text-dock-accent hover:underline">Aktualisieren</button>
+                    <button onClick={fetchLogs} className="text-xs text-dock-accent hover:underline">Refresh</button>
                 </div>
                 <div className="flex-1 rounded-[1.25rem] bg-[#0c0d12] p-4 border border-dock-border/50 overflow-hidden relative">
                   <div className="absolute inset-x-4 inset-y-4 overflow-y-auto scrollbar-thin text-xs font-mono text-gray-300 leading-relaxed break-words whitespace-pre-wrap">
-                    <div dangerouslySetInnerHTML={{ __html: ansiUp.ansi_to_html(logs || 'Keine Logs verfügbar.') }} />
+                    <div dangerouslySetInnerHTML={{ __html: ansiUp.ansi_to_html(logs || 'No logs available.') }} />
                     <div ref={logsEndRef} />
                   </div>
                 </div>
@@ -324,12 +324,12 @@ export default function StackEditor() {
 
           {isNew && (
             <div>
-              <h2 className="text-xl font-medium text-white mb-3 tracking-tight">Hinweise</h2>
+              <h2 className="text-xl font-medium text-white mb-3 tracking-tight">Tips</h2>
               <div className="rounded-[1.25rem] bg-dock-card p-5 border border-dock-border/50">
                 <ul className="space-y-3 text-sm leading-6 text-dock-muted">
-                    <li>Geben Sie einen Stack-Namen ein und fügen Sie eine Docker Compose YAML-Datei ein.</li>
-                    <li>Das Projekt wird unter <code>/opt/stacks/&lt;name&gt;</code> gespeichert und ausgeführt.</li>
-                    <li>Port-Bindungen und Volume-Pfade prüfen, bevor der Stack gestartet wird.</li>
+                    <li>Enter a stack name and provide a Docker Compose YAML file.</li>
+                    <li>The project is saved and executed under <code>/opt/stacks/&lt;name&gt;</code>.</li>
+                    <li>Review port bindings and volume paths before starting the stack.</li>
                 </ul>
               </div>
             </div>

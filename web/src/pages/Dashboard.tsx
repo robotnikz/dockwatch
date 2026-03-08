@@ -42,6 +42,10 @@ export default function Dashboard() {
   const updateCount = updates.filter((u) => u.updateAvailable).length;
   const availableUpdates = updates.filter((u) => u.updateAvailable);
   const runningStacks = stacks.filter((s) => s.status === 'running' || s.status === 'partial').length;
+  const runningServices = stacks.reduce(
+    (sum, stack) => sum + stack.services.filter((service) => service.State === 'running').length,
+    0,
+  );
 
   if (loading) {
     return (
@@ -82,8 +86,8 @@ export default function Dashboard() {
           <p className="mt-1 text-2xl font-bold text-dock-accent">{runningStacks}</p>
         </div>
         <div className="rounded-2xl border border-dock-border/50 bg-dock-card/80 p-4">
-          <p className="text-xs uppercase tracking-wider text-dock-muted">Stopped Stacks</p>
-          <p className="mt-1 text-2xl font-bold text-dock-muted">{stacks.length - runningStacks}</p>
+          <p className="text-xs uppercase tracking-wider text-dock-muted">Running Services</p>
+          <p className="mt-1 text-2xl font-bold text-white">{runningServices}</p>
         </div>
         <div className="rounded-2xl border border-dock-border/50 bg-dock-card/80 p-4">
           <p className="text-xs uppercase tracking-wider text-dock-muted">Updates Available</p>
