@@ -6,6 +6,8 @@ Branch: `audit/performance-architecture-security-coverage`
 ## Goal
 Turn the completed audit baseline into incremental, low-risk improvements that can be merged continuously.
 
+Current mode: `Audit complete, implementation deferred until explicit start signal`.
+
 ## Recommended Workflow
 1. Keep working on the audit branch in small vertical slices (code + tests + docs).
 2. Use one atomic commit per measure (clear rollback and review scope).
@@ -20,7 +22,9 @@ Turn the completed audit baseline into incremental, low-risk improvements that c
 ### P0 - Security and Input Hardening
 - [ ] Add strict validation for `cleanup` config payload shape and bounds.
 - [ ] Add request-size and string-length guard tests for `convert` and `resources` payloads.
-- [ ] Add route tests for malformed query/path values (`logs?tail=-1`, huge values, non-numeric values).
+- [~] Add route tests for malformed query/path values (`logs?tail=-1`, huge values, non-numeric values).
+- Done: `logs?tail` invalid/negative/zero handling was implemented and tested.
+- Remaining: extend malformed coverage to additional query/path inputs across cleanup/resources endpoints.
 - [ ] Add explicit safe defaults for optional booleans in route bodies (`dryRun`, exclusions flags).
 
 ### P1 - Reliability and Regression Guardrails
@@ -49,3 +53,8 @@ Turn the completed audit baseline into incremental, low-risk improvements that c
 - Coverage gate still green.
 - No build regressions (`server` + `web`).
 - `docs/AUDIT_BASELINE.md` updated with the change.
+
+## Audit Finalization Artifacts
+- Baseline log: `docs/AUDIT_BASELINE.md`
+- Vertical completion report: `docs/AUDIT_VERTICALS_REPORT.md`
+- Execution backlog (this file): `docs/AUDIT_ACTION_PLAN.md`

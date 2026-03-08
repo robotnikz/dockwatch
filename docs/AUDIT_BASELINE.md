@@ -53,7 +53,7 @@ Branch: `audit/performance-architecture-security-coverage`
   - functions: 85
 
 ## Next Audit Steps
-1. Execute P0 hardening backlog from `docs/AUDIT_ACTION_PLAN.md` (input constraints, malformed query coverage).
-2. Add integration-style API mount and lifecycle tests (P1 reliability).
-3. Add `perf:api` baseline capture + optional workflow dispatch artifact (P1 performance).
-4. Open PR using audit report + prioritized backlog and track follow-up slices.
+1. Audit verticals are complete; use `docs/AUDIT_VERTICALS_REPORT.md` as the finalized technical snapshot.
+2. Keep backlog execution deferred until implementation start is explicitly requested.
+3. When implementation starts, execute items in `docs/AUDIT_ACTION_PLAN.md` from P0 to P2.
+4. Open PR with baseline + vertical report + action plan to track execution slices.
