@@ -39,9 +39,13 @@ Real screenshots with sanitized placeholder data. No private hostnames, secrets,
 
 ![DockWatch Dashboard](docs/screenshots/dashboard.png)
 
-### Stack Editor (Policies + Limits)
+### Stack Editor
 
 ![DockWatch Stack Editor](docs/screenshots/stack_editor.png)
+
+### Prune Assistant
+
+![DockWatch Prune Assistant](docs/screenshots/prune_assistant.png)
 
 ---
 
