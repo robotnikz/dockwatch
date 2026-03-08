@@ -48,7 +48,7 @@ function stripAnsi(input: string): string {
 
 function progressKeyForLine(line: string): string | null {
   const plain = stripAnsi(line)
-    .replace(/^\s*[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]\s*/u, '')
+    .replace(/^\s*[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏✔✘✖●•·]+\s*/u, '')
     .replace(/\s+\d+(?:\.\d+)?s\s*$/i, '')
     .trim();
 
@@ -79,6 +79,9 @@ function mergeProgressLines(lines: string[], progressLineIndexes: Map<string, nu
   for (const line of lines) {
     const key = progressKeyForLine(line);
     if (!key) {
+      if (merged.length > 0 && merged[merged.length - 1] === line) {
+        continue;
+      }
       merged.push(line);
       continue;
     }

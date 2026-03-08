@@ -1,16 +1,11 @@
-import { useState, useEffect, type MouseEvent } from 'react';
+import { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { getStacks, getAppVersionStatus, triggerSelfUpdate, type AppVersionStatus, type Stack } from '../api';
-import AppModal from './AppModal';
+import { getStacks, getAppVersionStatus, type AppVersionStatus, type Stack } from '../api';
 
 export default function Sidebar() {
   const [stacks, setStacks] = useState<Stack[]>([]);
   const [appVersion, setAppVersion] = useState<AppVersionStatus | null>(null);
   const [search, setSearch] = useState('');
-  const [showUpdateModal, setShowUpdateModal] = useState(false);
-  const [updating, setUpdating] = useState(false);
-  const [reloadCountdown, setReloadCountdown] = useState<number | null>(null);
-  const [updateError, setUpdateError] = useState<string | null>(null);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -40,42 +35,6 @@ export default function Sidebar() {
   }, []);
 
   const filteredStacks = stacks.filter((s) => s.name.toLowerCase().includes(search.toLowerCase()));
-  const selfUpdateSupported = Boolean(appVersion?.selfUpdate?.supported);
-
-  useEffect(() => {
-    if (reloadCountdown == null || reloadCountdown <= 0) return;
-    const id = setInterval(() => {
-      setReloadCountdown((prev) => {
-        if (prev == null) return prev;
-        if (prev <= 1) {
-          window.location.reload();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(id);
-  }, [reloadCountdown]);
-
-  const onUpdateBadgeClick = (event: MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    event.stopPropagation();
-    if (!appVersion?.updateAvailable) return;
-    setUpdateError(null);
-    setShowUpdateModal(true);
-  };
-
-  const startSelfUpdate = async () => {
-    setUpdating(true);
-    setUpdateError(null);
-    try {
-      const result = await triggerSelfUpdate();
-      setReloadCountdown(result.reloadAfterSeconds || 30);
-    } catch (err: any) {
-      setUpdateError(err.message || 'Self update failed to start');
-      setUpdating(false);
-    }
-  };
 
   const versionBadge = (() => {
     if (!appVersion) {
@@ -86,14 +45,15 @@ export default function Sidebar() {
     }
     if (appVersion.updateAvailable) {
       return (
-        <button
-          type="button"
-          onClick={onUpdateBadgeClick}
+        <a
+          href={appVersion.releaseUrl || appVersion.githubUrl || 'https://github.com/robotnikz/dockwatch'}
+          target="_blank"
+          rel="noreferrer"
           className="cursor-pointer rounded-full border border-amber-400/40 bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-300 transition hover:bg-amber-500/30 hover:text-amber-200"
-          title="View release notes and update options"
+          title="Open release page"
         >
           Update Available
-        </button>
+        </a>
       );
     }
     return <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">Up To Date</span>;
@@ -183,9 +143,6 @@ export default function Sidebar() {
           {appVersion?.latestVersion && appVersion.updateAvailable ? (
             <div className="mt-1 space-y-1">
               <div className="text-xs text-dock-muted">Latest: v{appVersion.latestVersion}</div>
-              <div className="text-[11px] text-amber-300/90">
-                Click the update badge to view release notes.
-              </div>
             </div>
           ) : null}
           <a
@@ -199,87 +156,6 @@ export default function Sidebar() {
         </div>
       </div>
 
-      <AppModal
-        isOpen={showUpdateModal}
-        onClose={() => setShowUpdateModal(false)}
-        title="Update DockWatch"
-        maxWidthClassName="max-w-md"
-        footer={
-          !updating && reloadCountdown == null ? (
-            <div className="flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setShowUpdateModal(false)}
-                className="rounded-xl border border-dock-border px-4 py-2 text-sm font-semibold text-dock-muted hover:text-white"
-              >
-                Cancel
-              </button>
-              {selfUpdateSupported ? (
-                <button
-                  type="button"
-                  onClick={startSelfUpdate}
-                  className="rounded-xl bg-dock-accent px-4 py-2 text-sm font-bold text-dock-bg hover:bg-dock-accent/90"
-                >
-                  Update
-                </button>
-              ) : null}
-            </div>
-          ) : (
-            <div className="flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => window.location.reload()}
-                className="rounded-xl border border-dock-border px-4 py-2 text-sm font-semibold text-white hover:border-dock-accent/40"
-              >
-                Refresh Now
-              </button>
-              <button
-                type="button"
-                onClick={() => setShowUpdateModal(false)}
-                className="rounded-xl border border-dock-border px-4 py-2 text-sm font-semibold text-dock-muted hover:text-white"
-              >
-                Close
-              </button>
-            </div>
-          )
-        }
-      >
-        <div className="rounded-xl border border-dock-border/60 bg-dock-bg/30 p-3">
-          <div className="text-xs uppercase tracking-wide text-dock-muted">Release Notes</div>
-          <div className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap text-xs leading-5 text-dock-text">
-            {appVersion?.releaseNotes || 'No release notes provided for this version.'}
-          </div>
-          <a
-            href={appVersion?.releaseUrl || appVersion?.githubUrl || 'https://github.com/robotnikz/dockwatch'}
-            target="_blank"
-            rel="noreferrer"
-            className="mt-2 inline-block text-xs font-semibold text-dock-accent hover:underline"
-          >
-            Open full release page
-          </a>
-        </div>
-
-        <p className="mt-3 text-sm text-dock-muted">
-          {selfUpdateSupported
-            ? (
-              <>
-                This will run <code>docker compose down && docker compose pull && docker compose up -d</code> in
-                <code className="ml-1">{appVersion?.selfUpdate?.workingDir || 'configured directory'}</code>.
-              </>
-            )
-            : (appVersion?.selfUpdate?.reason || 'Self-update is not available in this environment.')}
-        </p>
-
-        {updateError ? (
-          <div className="mt-3 rounded-xl border border-dock-red/30 bg-dock-red/10 px-3 py-2 text-sm text-dock-red">{updateError}</div>
-        ) : null}
-
-        {reloadCountdown != null ? (
-          <div className="mt-4 rounded-xl border border-dock-border/60 bg-dock-bg/30 p-3 text-sm text-dock-text">
-            Update started. Reloading in <span className="font-bold text-dock-accent">{reloadCountdown}s</span>.
-          </div>
-        ) : null}
-      </AppModal>
     </aside>
   );
 }
