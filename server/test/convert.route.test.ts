@@ -49,4 +49,15 @@ describe('convert routes', () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('invalid docker command');
   });
+
+  it('rejects empty and oversized command payloads', async () => {
+    const emptyRes = await request(buildApp()).post('/convert').send({ command: '   ' });
+    expect(emptyRes.status).toBe(400);
+    expect(emptyRes.body.error).toContain('command must not be empty');
+
+    const oversized = 'x'.repeat(9000);
+    const bigRes = await request(buildApp()).post('/convert').send({ command: oversized });
+    expect(bigRes.status).toBe(400);
+    expect(bigRes.body.error).toContain('command too long');
+  });
 });

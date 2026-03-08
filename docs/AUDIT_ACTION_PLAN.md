@@ -20,12 +20,14 @@ Current mode: `Audit complete, implementation deferred until explicit start sign
 ## Priority Measures
 
 ### P0 - Security and Input Hardening
-- [ ] Add strict validation for `cleanup` config payload shape and bounds.
-- [ ] Add request-size and string-length guard tests for `convert` and `resources` payloads.
+- [x] Add strict validation for `cleanup` config payload shape and bounds.
+- [x] Add request-size and string-length guard tests for `convert` and `resources` payloads.
 - [~] Add route tests for malformed query/path values (`logs?tail=-1`, huge values, non-numeric values).
 - Done: `logs?tail` invalid/negative/zero handling was implemented and tested.
 - Remaining: extend malformed coverage to additional query/path inputs across cleanup/resources endpoints.
-- [ ] Add explicit safe defaults for optional booleans in route bodies (`dryRun`, exclusions flags).
+- [~] Add explicit safe defaults for optional booleans in route bodies (`dryRun`, exclusions flags).
+- Done: route validation now enforces boolean types when flags are provided and keeps safe defaults when omitted.
+- Remaining: add explicit fallback normalization helper shared by cleanup/resources route bodies.
 
 ### P1 - Reliability and Regression Guardrails
 - [ ] Add integration test for API mount paths in `src/index.ts` with a lightweight app harness.

@@ -55,9 +55,12 @@ describe('resources routes', () => {
     mocks.updateServiceResources.mockResolvedValue('services:\n  app:\n    deploy: {}\n');
 
     const payload = {
-      limits: { cpus: 2, memory: '1g' },
-      reservations: { cpus: 1, memory: '512m' },
-      updateExclusions: true,
+      limits_cpus: '2',
+      limits_memory: '1g',
+      reservations_cpus: '1',
+      reservations_memory: '512m',
+      update_excluded: true,
+      update_check_excluded: false,
     };
 
     const res = await request(buildApp()).put('/resources/demo/app').send(payload);
@@ -70,9 +73,29 @@ describe('resources routes', () => {
   it('returns 400 when update fails', async () => {
     mocks.updateServiceResources.mockRejectedValue(new Error('invalid resource config'));
 
-    const res = await request(buildApp()).put('/resources/demo/app').send({ limits: { cpus: -1 } });
+    const res = await request(buildApp()).put('/resources/demo/app').send({ limits_cpus: '-1' });
 
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('invalid resource config');
+  });
+
+  it('rejects malformed resource payloads before service call', async () => {
+    const badType = await request(buildApp()).put('/resources/demo/app').send([]);
+    expect(badType.status).toBe(400);
+    expect(badType.body.error).toContain('resource config must be an object');
+
+    const unknownKey = await request(buildApp()).put('/resources/demo/app').send({ unknown: true });
+    expect(unknownKey.status).toBe(400);
+    expect(unknownKey.body.error).toContain('Unknown resource field: unknown');
+
+    const badBoolean = await request(buildApp()).put('/resources/demo/app').send({ update_excluded: 'yes' });
+    expect(badBoolean.status).toBe(400);
+    expect(badBoolean.body.error).toContain('update_excluded must be a boolean');
+
+    const tooLong = await request(buildApp()).put('/resources/demo/app').send({ limits_memory: 'x'.repeat(128) });
+    expect(tooLong.status).toBe(400);
+    expect(tooLong.body.error).toContain('limits_memory is too long');
+
+    expect(mocks.updateServiceResources).not.toHaveBeenCalled();
   });
 });

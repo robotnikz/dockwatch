@@ -37,6 +37,10 @@ Branch: `audit/performance-architecture-security-coverage`
 - Added meta route tests for version/status retrieval and self-update trigger error handling.
 - Added convert route tests for payload validation and conversion error behavior.
 - Added resources route tests for stack fetch/update success and error paths.
+- Hardened cleanup route payload validation for config/run endpoints (shape, enum, time format, option booleans, label list bounds).
+- Hardened convert route with command normalization and max-length guard.
+- Hardened resources update route with strict field allowlist, value type checks, and per-field length caps.
+- Added negative tests covering malformed payload handling for cleanup/convert/resources routes.
 
 ## Coverage Scope (Phase 1)
 - Focused target: `server/src/services/resources.ts`
