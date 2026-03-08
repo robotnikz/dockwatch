@@ -30,9 +30,9 @@ Current mode: `Audit complete, implementation deferred until explicit start sign
 - Remaining: add explicit fallback normalization helper shared by cleanup/resources route bodies.
 
 ### P1 - Reliability and Regression Guardrails
-- [ ] Add integration test for API mount paths in `src/index.ts` with a lightweight app harness.
-- [ ] Add one end-to-end happy path that touches stack lifecycle (`up -> logs -> down`) with mocked services.
-- [ ] Add test for cleanup reset conflict race (run state flips between check and reset).
+- [x] Add integration test for API mount paths in `src/index.ts` with a lightweight app harness.
+- [x] Add one end-to-end happy path that touches stack lifecycle (`up -> logs -> down`) with mocked services.
+- [x] Add test for cleanup reset conflict race (run state flips between check and reset).
 
 ### P1 - Performance
 - [x] Add baseline capture file for `perf:api` outputs (req/s + p95 latency).

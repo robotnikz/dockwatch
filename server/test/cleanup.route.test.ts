@@ -199,4 +199,16 @@ describe('cleanup routes', () => {
     expect(ok.body.ok).toBe(true);
     expect(mocks.resetCleanupStatistics).toHaveBeenCalledTimes(1);
   });
+
+  it('returns 409 if reset races into running state', async () => {
+    mocks.isCleanupRunning.mockReturnValueOnce(false);
+    mocks.resetCleanupStatistics.mockImplementation(() => {
+      throw new Error('cleanup is running now');
+    });
+
+    const res = await request(buildApp()).post('/cleanup/reset');
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toContain('Cannot reset statistics while cleanup is running');
+  });
 });

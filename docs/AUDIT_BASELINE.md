@@ -44,6 +44,10 @@ Branch: `audit/performance-architecture-security-coverage`
 - Hardened convert route with command normalization and max-length guard.
 - Hardened resources update route with strict field allowlist, value type checks, and per-field length caps.
 - Added negative tests covering malformed payload handling for cleanup/convert/resources routes.
+- Refactored app bootstrap to `createApp()` (`src/app.ts`) for integration-testable API mounts without server side effects.
+- Added API mount integration test using app harness.
+- Added stack lifecycle happy-path test (`up -> logs -> down`) with mocked docker service calls.
+- Added cleanup reset race-path handling and test (maps race to HTTP 409 conflict).
 
 ## Coverage Scope (Phase 1)
 - Focused target: `server/src/services/resources.ts`

@@ -182,6 +182,10 @@ router.post('/reset', (_req: Request, res: Response) => {
     resetCleanupStatistics();
     res.json({ ok: true });
   } catch (err: any) {
+    if (String(err?.message || '').toLowerCase().includes('running')) {
+      res.status(409).json({ error: 'Cannot reset statistics while cleanup is running' });
+      return;
+    }
     res.status(500).json({ error: err.message });
   }
 });

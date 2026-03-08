@@ -262,6 +262,29 @@ describe('stacks routes', () => {
     expect(mocks.composeLogs).toHaveBeenCalledWith('demo', 1);
   });
 
+  it('supports lifecycle happy path up -> logs -> down', async () => {
+    mocks.composeUp.mockResolvedValue('up-ok');
+    mocks.composeLogs.mockResolvedValue('service booted\nready');
+    mocks.composeDown.mockResolvedValue('down-ok');
+    mocks.notifyStackAction.mockResolvedValue(undefined);
+
+    const up = await request(buildApp()).post('/stacks/demo/up');
+    expect(up.status).toBe(200);
+    expect(up.body).toEqual({ ok: true, output: 'up-ok' });
+
+    const logs = await request(buildApp()).get('/stacks/demo/logs?tail=50');
+    expect(logs.status).toBe(200);
+    expect(logs.body.output).toContain('ready');
+    expect(mocks.composeLogs).toHaveBeenCalledWith('demo', 50);
+
+    const down = await request(buildApp()).post('/stacks/demo/down');
+    expect(down.status).toBe(200);
+    expect(down.body).toEqual({ ok: true, output: 'down-ok' });
+
+    expect(mocks.notifyStackAction).toHaveBeenCalledWith('demo', 'started', true);
+    expect(mocks.notifyStackAction).toHaveBeenCalledWith('demo', 'stopped', true);
+  });
+
   it('returns stack images and handles image/log route errors', async () => {
     mocks.getStackImages.mockResolvedValueOnce(['nginx:latest']);
     const imagesOk = await request(buildApp()).get('/stacks/demo/images');
