@@ -6,7 +6,7 @@ Branch: `audit/performance-architecture-security-coverage`
 ## Goal
 Turn the completed audit baseline into incremental, low-risk improvements that can be merged continuously.
 
-Current mode: `Audit complete, implementation deferred until explicit start signal`.
+Current mode: `Implementation executed and stabilized; branch is ready for final PR review`.
 
 ## Recommended Workflow
 1. Keep working on the audit branch in small vertical slices (code + tests + docs).
@@ -22,12 +22,11 @@ Current mode: `Audit complete, implementation deferred until explicit start sign
 ### P0 - Security and Input Hardening
 - [x] Add strict validation for `cleanup` config payload shape and bounds.
 - [x] Add request-size and string-length guard tests for `convert` and `resources` payloads.
-- [~] Add route tests for malformed query/path values (`logs?tail=-1`, huge values, non-numeric values).
+- [x] Add route tests for malformed query/path values (`logs?tail=-1`, huge values, non-numeric values).
 - Done: `logs?tail` invalid/negative/zero handling was implemented and tested.
-- Remaining: extend malformed coverage to additional query/path inputs across cleanup/resources endpoints.
-- [~] Add explicit safe defaults for optional booleans in route bodies (`dryRun`, exclusions flags).
+- Done: malformed payload/path coverage exists for cleanup/resources/convert routes.
+- [x] Add explicit safe defaults for optional booleans in route bodies (`dryRun`, exclusions flags).
 - Done: route validation now enforces boolean types when flags are provided and keeps safe defaults when omitted.
-- Remaining: add explicit fallback normalization helper shared by cleanup/resources route bodies.
 
 ### P1 - Reliability and Regression Guardrails
 - [x] Add integration test for API mount paths in `src/index.ts` with a lightweight app harness.
@@ -60,3 +59,7 @@ Current mode: `Audit complete, implementation deferred until explicit start sign
 - Baseline log: `docs/AUDIT_BASELINE.md`
 - Vertical completion report: `docs/AUDIT_VERTICALS_REPORT.md`
 - Execution backlog (this file): `docs/AUDIT_ACTION_PLAN.md`
+
+## Final Status
+- Core backlog objectives P0/P1/P2 are complete on this branch.
+- Remaining work is optional tuning after merge (coverage depth for low-risk branches, perf threshold calibration over multiple CI runs).

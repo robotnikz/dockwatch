@@ -7,12 +7,12 @@ Scope: finalize audit verticals and defer implementation backlog to follow-up ex
 ## Executive Summary
 - Audit verticals are complete for testing, coverage baseline, security checks, architecture guardrails, and performance sanity instrumentation.
 - Current branch is stable: server tests pass, server/web builds pass, and perf sanity scripts run successfully.
-- Implementation backlog is intentionally deferred; prioritization and execution order are tracked in `docs/AUDIT_ACTION_PLAN.md`.
+- Implementation backlog has been executed through P0/P1/P2; final state and optional follow-ups are tracked in `docs/AUDIT_ACTION_PLAN.md`.
 
 ## Vertical: Testing and Coverage
 Status: Complete (baseline phase)
 - Automated server tests established with Vitest + coverage.
-- Current result: 13 test files, 71 tests, all passing.
+- Current result: 14 test files, 78 tests, all passing.
 - Coverage thresholds enforced (lines/statements/branches/functions).
 - Enforced route scope now includes:
   - `settings.ts`, `updates.ts`, `stacks.ts`, `cleanup.ts`, `stats.ts`, `meta.ts`, `convert.ts`, `resources.ts`
@@ -29,7 +29,7 @@ Status: Complete (audit and initial hardening phase)
 - Route-level malformed input coverage expanded (`logs?tail` clamping and invalid fallback behavior).
 
 Residual risk:
-- Cleanup payload schema constraints are still minimal and should be tightened in execution phase (tracked in action plan).
+- Low: additional strict path-parameter normalization can be added later if needed for niche stack/service naming policies.
 
 ## Vertical: Architecture and Reliability
 Status: Complete (audit phase)
@@ -38,27 +38,23 @@ Status: Complete (audit phase)
 - Scheduler decision-path tests added for auto-update behavior.
 
 Residual risk:
-- Repeated route error-response patterns are still duplicated and could be consolidated (tracked in action plan).
+- Low: shared helpers are in place; additional route-by-route convergence is optional.
 
 ## Vertical: Performance
 Status: Complete (baseline instrumentation phase)
 - `perf:sanity` available and wired into CI as non-blocking signal.
 - `perf:api` benchmark script available and runnable locally.
 - Latest snapshot:
-  - `GET /api/settings`: req/s avg ~5070, latency avg ~3.55ms
-  - `GET /api/updates`: req/s avg ~6187, latency avg ~2.74ms
+  - `GET /api/settings`: req/s avg ~5169, latency avg ~3.28ms
+  - `GET /api/updates`: req/s avg ~6270, latency avg ~2.55ms
 
 Residual risk:
-- No persisted benchmark baseline file or regression threshold policy yet (tracked in action plan).
+- Low: thresholds are warning-only and should be tuned with more CI samples.
 
 ## Validation Snapshot (Latest Run)
-- `cd server && npm run test:coverage && npm run build && npm run perf:sanity && npm run perf:api`: PASS
+- `cd server && npm run test:coverage && npm run build && npm run perf:sanity && npm run perf:api`: PASS (14 files / 78 tests)
 - `cd web && npm run build`: PASS
 
 ## Handoff to Implementation Phase
-- Action plan is the single source of truth for deferred execution: `docs/AUDIT_ACTION_PLAN.md`.
-- Recommended start order when implementation begins:
-  1. P0 hardening items
-  2. P1 reliability guardrails
-  3. P1 performance baselines in CI
-  4. P2 architecture refactors
+- Action plan is the single source of truth for implemented scope and optional follow-ups: `docs/AUDIT_ACTION_PLAN.md`.
+- Branch is ready for PR review and merge.

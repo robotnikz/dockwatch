@@ -67,7 +67,7 @@ Branch: `audit/performance-architecture-security-coverage`
   - functions: 85
 
 ## Next Audit Steps
-1. Audit verticals are complete; use `docs/AUDIT_VERTICALS_REPORT.md` as the finalized technical snapshot.
-2. Keep backlog execution deferred until implementation start is explicitly requested.
-3. When implementation starts, execute items in `docs/AUDIT_ACTION_PLAN.md` from P0 to P2.
-4. Open PR with baseline + vertical report + action plan to track execution slices.
+1. Open PR with `docs/AUDIT_VERTICALS_REPORT.md`, `docs/AUDIT_ACTION_PLAN.md`, and this baseline as review artifacts.
+2. Merge branch after CI confirms stability on hosted runners.
+3. Post-merge: monitor non-blocking perf warnings and recalibrate thresholds after 3-5 CI benchmark runs.
+4. Post-merge: optionally increase coverage focus on residual low-risk branches in `stacks.ts` and `cleanup.ts`.
