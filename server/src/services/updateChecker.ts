@@ -17,10 +17,19 @@ const DEFAULT_ALLOWED_REGISTRIES = [
   'mcr.microsoft.com',
 ];
 
+let allowedRegistriesCacheRaw = '';
+let allowedRegistriesCache = new Set<string>(DEFAULT_ALLOWED_REGISTRIES);
+
 function getAllowedRegistries(): Set<string> {
   const raw = String(process.env.DOCKWATCH_ALLOWED_REGISTRIES || '').trim();
+  if (raw === allowedRegistriesCacheRaw) {
+    return allowedRegistriesCache;
+  }
+
+  allowedRegistriesCacheRaw = raw;
   if (!raw) {
-    return new Set(DEFAULT_ALLOWED_REGISTRIES);
+    allowedRegistriesCache = new Set(DEFAULT_ALLOWED_REGISTRIES);
+    return allowedRegistriesCache;
   }
 
   const values = raw
@@ -28,7 +37,8 @@ function getAllowedRegistries(): Set<string> {
     .map((item) => item.trim().toLowerCase())
     .filter(Boolean);
 
-  return new Set(values.length > 0 ? values : DEFAULT_ALLOWED_REGISTRIES);
+  allowedRegistriesCache = new Set(values.length > 0 ? values : DEFAULT_ALLOWED_REGISTRIES);
+  return allowedRegistriesCache;
 }
 
 export function isAllowedRegistryHost(registry: string): boolean {
