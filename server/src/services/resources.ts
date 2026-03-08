@@ -32,6 +32,29 @@ function createSafeRecord<T>(): Record<string, T> {
   return Object.create(null) as Record<string, T>;
 }
 
+function sanitizeParsedValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((entry) => sanitizeParsedValue(entry));
+  }
+
+  if (value && typeof value === 'object') {
+    const safe = createSafeRecord<unknown>();
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      if (!isSafeKey(key)) continue;
+      safe[key] = sanitizeParsedValue(child);
+    }
+    return safe;
+  }
+
+  return value;
+}
+
+function parseSafeYaml(yamlContent: string): Record<string, unknown> {
+  const parsed = parse(yamlContent);
+  const safe = sanitizeParsedValue(parsed);
+  return (safe && typeof safe === 'object' ? safe : createSafeRecord<unknown>()) as Record<string, unknown>;
+}
+
 function normalizeValue(value: unknown): string | undefined {
   if (value === null || value === undefined) {
     return undefined;
@@ -212,13 +235,13 @@ function setUpdateCheckExcludedLabel(service: ComposeService, excluded: boolean)
 
 /** Get current resource config for a specific service in a stack */
 export function getResourcesFromYaml(yamlContent: string, serviceName: string): ResourceConfig {
-  const doc = parse(yamlContent);
+  const doc = parseSafeYaml(yamlContent);
   return getResourcesFromDoc(doc, serviceName);
 }
 
 /** Update resources for a service, returns the new YAML content */
 export function setResourcesInYaml(yamlContent: string, serviceName: string, config: ResourceConfig): string {
-  const doc = parse(yamlContent);
+  const doc = parseSafeYaml(yamlContent);
   const service = getService(doc, serviceName);
   const normalized = normalizeConfig(config);
 
@@ -287,7 +310,7 @@ export function setResourcesInYaml(yamlContent: string, serviceName: string, con
 /** Get all services and their resource configs for a stack */
 export async function getStackResources(stackName: string): Promise<Record<string, ResourceConfig>> {
   const content = await getComposeContent(stackName);
-  const doc = parse(content);
+  const doc = parseSafeYaml(content);
   const result: Record<string, ResourceConfig> = createSafeRecord<ResourceConfig>();
 
   if (doc?.services && typeof doc.services === 'object') {
