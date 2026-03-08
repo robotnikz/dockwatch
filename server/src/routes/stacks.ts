@@ -252,8 +252,9 @@ router.post('/:name/update/:service', async (req: Request<NameServiceParams>, re
 
 router.get('/:name/logs', async (req: Request<NameParams>, res: Response) => {
   try {
-    const tail = parseInt(req.query.tail as string) || 100;
-    const output = await composeLogs(req.params.name, Math.min(tail, 1000));
+    const parsedTail = Number.parseInt(String(req.query.tail ?? ''), 10);
+    const tail = Number.isFinite(parsedTail) ? Math.min(Math.max(parsedTail, 1), 1000) : 100;
+    const output = await composeLogs(req.params.name, tail);
     res.json({ output });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

@@ -9,6 +9,8 @@ import {
   type CleanupConfig,
 } from '../services/cleanup.js';
 import { restartCleanupScheduler } from '../services/cleanupScheduler.js';
+import { validateCleanupConfigPayload, validateCleanupRunPayload } from '../validation/cleanup.js';
+import { badRequest, conflict, internalServerError } from '../utils/httpResponses.js';
 
 const router = Router();
 
@@ -18,24 +20,35 @@ router.get('/', async (_req: Request, res: Response) => {
     const dashboard = getCleanupDashboardSync(preview);
     res.json(dashboard);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    internalServerError(res, err);
   }
 });
 
 router.put('/config', (req: Request, res: Response) => {
   try {
-    const body = req.body as Partial<CleanupConfig>;
-    const config = saveCleanupConfig(body);
+    const validated = validateCleanupConfigPayload(req.body);
+    if (!validated.ok) {
+      badRequest(res, validated.error);
+      return;
+    }
+
+    const config = saveCleanupConfig(validated.value as Partial<CleanupConfig>);
     restartCleanupScheduler();
     res.json({ ok: true, config });
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    badRequest(res, String(err?.message || 'Invalid cleanup config'));
   }
 });
 
 router.post('/run', async (req: Request, res: Response) => {
   try {
-    const body = req.body as { options?: CleanupConfig['options']; dryRun?: boolean };
+    const validated = validateCleanupRunPayload(req.body);
+    if (!validated.ok) {
+      badRequest(res, validated.error);
+      return;
+    }
+
+    const body = validated.value as { options?: CleanupConfig['options']; dryRun?: boolean };
     const dryRun = req.query.dryRun === 'true' || body.dryRun === true;
     const savedConfig = saveCleanupConfig({ options: body.options });
     if (req.query.stream === 'true') {
@@ -63,7 +76,7 @@ router.post('/run', async (req: Request, res: Response) => {
       res.write(`data: ${JSON.stringify({ error: err.message })}\n\n`);
       res.end();
     } else {
-      res.status(500).json({ error: err.message });
+      internalServerError(res, err);
     }
   }
 });
@@ -73,20 +86,24 @@ router.get('/preview', async (_req: Request, res: Response) => {
     const preview = await getCleanupPreview();
     res.json(preview);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    internalServerError(res, err);
   }
 });
 
 router.post('/reset', (_req: Request, res: Response) => {
   try {
     if (isCleanupRunning()) {
-      res.status(409).json({ error: 'Cannot reset statistics while cleanup is running' });
+      conflict(res, 'Cannot reset statistics while cleanup is running');
       return;
     }
     resetCleanupStatistics();
     res.json({ ok: true });
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    if (String(err?.message || '').toLowerCase().includes('running')) {
+      conflict(res, 'Cannot reset statistics while cleanup is running');
+      return;
+    }
+    internalServerError(res, err);
   }
 });
 

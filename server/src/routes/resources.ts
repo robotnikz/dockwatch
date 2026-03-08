@@ -1,5 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { getStackResources, updateServiceResources, type ResourceConfig } from '../services/resources.js';
+import { validateResourceConfigPayload } from '../validation/resources.js';
+import { badRequest, internalServerError } from '../utils/httpResponses.js';
 
 type StackParams = { name: string };
 type ServiceParams = { name: string; service: string };
@@ -11,18 +13,23 @@ router.get('/:name', async (req: Request<StackParams>, res: Response) => {
     const resources = await getStackResources(req.params.name);
     res.json(resources);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    internalServerError(res, err);
   }
 });
 
 // Update resources for a specific service
 router.put('/:name/:service', async (req: Request<ServiceParams>, res: Response) => {
   try {
-    const config = req.body as ResourceConfig;
+    const validated = validateResourceConfigPayload(req.body);
+    if (!validated.ok) {
+      badRequest(res, validated.error);
+      return;
+    }
+    const config = validated.value as ResourceConfig;
     const newContent = await updateServiceResources(req.params.name, req.params.service, config);
     res.json({ ok: true, content: newContent, needsRestart: true });
   } catch (err: any) {
-    res.status(400).json({ error: err.message });
+    badRequest(res, String(err?.message || 'Invalid resource config'));
   }
 });
 

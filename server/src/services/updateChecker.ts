@@ -17,10 +17,19 @@ const DEFAULT_ALLOWED_REGISTRIES = [
   'mcr.microsoft.com',
 ];
 
+let allowedRegistriesCacheRaw = '';
+let allowedRegistriesCache = new Set<string>(DEFAULT_ALLOWED_REGISTRIES);
+
 function getAllowedRegistries(): Set<string> {
   const raw = String(process.env.DOCKWATCH_ALLOWED_REGISTRIES || '').trim();
+  if (raw === allowedRegistriesCacheRaw) {
+    return allowedRegistriesCache;
+  }
+
+  allowedRegistriesCacheRaw = raw;
   if (!raw) {
-    return new Set(DEFAULT_ALLOWED_REGISTRIES);
+    allowedRegistriesCache = new Set(DEFAULT_ALLOWED_REGISTRIES);
+    return allowedRegistriesCache;
   }
 
   const values = raw
@@ -28,10 +37,11 @@ function getAllowedRegistries(): Set<string> {
     .map((item) => item.trim().toLowerCase())
     .filter(Boolean);
 
-  return new Set(values.length > 0 ? values : DEFAULT_ALLOWED_REGISTRIES);
+  allowedRegistriesCache = new Set(values.length > 0 ? values : DEFAULT_ALLOWED_REGISTRIES);
+  return allowedRegistriesCache;
 }
 
-function isAllowedRegistryHost(registry: string): boolean {
+export function isAllowedRegistryHost(registry: string): boolean {
   const normalized = registry.trim().toLowerCase();
   if (!normalized) return false;
   if (!/^[a-z0-9.-]+(?::\d+)?$/.test(normalized)) return false;
@@ -42,7 +52,7 @@ function isAllowedRegistryHost(registry: string): boolean {
   return getAllowedRegistries().has(normalized) || getAllowedRegistries().has(hostOnly);
 }
 
-function buildManifestUrl(registry: string, repo: string, tag: string): URL {
+export function buildManifestUrl(registry: string, repo: string, tag: string): URL {
   const encodedRepo = repo
     .split('/')
     .map((part) => encodeURIComponent(part))
@@ -52,7 +62,7 @@ function buildManifestUrl(registry: string, repo: string, tag: string): URL {
 }
 
 /** Parse image reference into registry, repo, tag */
-function parseImage(image: string): { registry: string; repo: string; tag: string } {
+export function parseImage(image: string): { registry: string; repo: string; tag: string } {
   let registry = 'registry-1.docker.io';
   let ref = image.trim();
   let tag = 'latest';

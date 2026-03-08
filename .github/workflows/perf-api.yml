@@ -1,0 +1,72 @@
+name: Perf API Benchmark
+
+on:
+  workflow_dispatch:
+
+jobs:
+  perf-api:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies (Server)
+        working-directory: ./server
+        run: npm ci
+
+      - name: Run API benchmark
+        working-directory: ./server
+        run: npm run perf:api | tee perf-api-output.txt
+
+      - name: Evaluate baseline drift (warning only)
+        working-directory: ./server
+        run: |
+          set -e
+          settings_req=$(grep -oE 'GET /api/settings: req/s avg=[0-9.]+' perf-api-output.txt | sed -E 's/.*avg=([0-9.]+)/\1/' | tail -n1)
+          updates_req=$(grep -oE 'GET /api/updates: req/s avg=[0-9.]+' perf-api-output.txt | sed -E 's/.*avg=([0-9.]+)/\1/' | tail -n1)
+          settings_lat=$(grep -oE 'GET /api/settings: .*latency avg=[0-9.]+ms' perf-api-output.txt | sed -E 's/.*latency avg=([0-9.]+)ms/\1/' | tail -n1)
+          updates_lat=$(grep -oE 'GET /api/updates: .*latency avg=[0-9.]+ms' perf-api-output.txt | sed -E 's/.*latency avg=([0-9.]+)ms/\1/' | tail -n1)
+
+          baseline_settings_req=5289.88
+          baseline_updates_req=5277.50
+          baseline_settings_lat=3.37
+          baseline_updates_lat=3.37
+
+          req_drop_pct=15
+          lat_rise_pct=25
+
+          check_req() {
+            name="$1"; current="$2"; baseline="$3"
+            threshold=$(awk -v b="$baseline" -v p="$req_drop_pct" 'BEGIN { printf "%.4f", b*(1-p/100) }')
+            below=$(awk -v c="$current" -v t="$threshold" 'BEGIN { if (c < t) print 1; else print 0 }')
+            if [ "$below" = "1" ]; then
+              echo "::warning::${name} req/s dropped below threshold. current=${current}, baseline=${baseline}, threshold=${threshold}"
+            fi
+          }
+
+          check_lat() {
+            name="$1"; current="$2"; baseline="$3"
+            threshold=$(awk -v b="$baseline" -v p="$lat_rise_pct" 'BEGIN { printf "%.4f", b*(1+p/100) }')
+            above=$(awk -v c="$current" -v t="$threshold" 'BEGIN { if (c > t) print 1; else print 0 }')
+            if [ "$above" = "1" ]; then
+              echo "::warning::${name} latency exceeded threshold. current=${current}, baseline=${baseline}, threshold=${threshold}"
+            fi
+          }
+
+          check_req "GET /api/settings" "$settings_req" "$baseline_settings_req"
+          check_req "GET /api/updates" "$updates_req" "$baseline_updates_req"
+          check_lat "GET /api/settings" "$settings_lat" "$baseline_settings_lat"
+          check_lat "GET /api/updates" "$updates_lat" "$baseline_updates_lat"
+
+      - name: Upload benchmark artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-api-output
+          path: server/perf-api-output.txt
+          if-no-files-found: error

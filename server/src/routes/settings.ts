@@ -2,37 +2,10 @@ import { Router, type Request, type Response } from 'express';
 import { getAllSettings, getSetting, setSetting } from '../db.js';
 import { testWebhook } from '../services/discord.js';
 import { restartScheduler } from '../services/scheduler.js';
+import { validateSettingsUpdatePayload } from '../validation/settings.js';
+import { badRequest } from '../utils/httpResponses.js';
 
 const router = Router();
-
-const ALLOWED_KEYS = [
-  'discord_webhook',
-  'discord_notify_actions',
-  'discord_notify_container_updates',
-  'discord_notify_prune_messages',
-  'check_cron',
-  'update_exclusions',
-  'prunemate_url',
-  'cleanup_schedule_enabled',
-  'cleanup_schedule_frequency',
-  'cleanup_schedule_time',
-  'cleanup_protection_enabled',
-  'cleanup_protected_image_labels',
-  'cleanup_protected_volume_labels',
-  'cleanup_option_containers',
-  'cleanup_option_images',
-  'cleanup_option_networks',
-  'cleanup_option_volumes',
-  'cleanup_option_build_cache',
-  'cleanup_last_schedule_key',
-];
-
-const READONLY_UI_KEYS = new Set(['discord_webhook_set']);
-
-function looksMaskedWebhook(value: string): boolean {
-  const trimmed = String(value || '').trim();
-  return trimmed.includes('...') && /^https?:\/\//i.test(trimmed);
-}
 
 router.get('/', (_req: Request, res: Response) => {
   const settings = getAllSettings();
@@ -46,23 +19,17 @@ router.get('/', (_req: Request, res: Response) => {
 });
 
 router.put('/', (req: Request, res: Response) => {
-  const body = req.body as Record<string, string>;
-  for (const [key, value] of Object.entries(body)) {
-    if (READONLY_UI_KEYS.has(key)) {
-      continue;
-    }
-    if (!ALLOWED_KEYS.includes(key)) {
-      res.status(400).json({ error: `Unknown setting: ${key}` });
-      return;
-    }
-    // Frontend receives masked webhook text from GET; never persist that back.
-    if (key === 'discord_webhook' && looksMaskedWebhook(String(value))) {
-      continue;
-    }
+  const validated = validateSettingsUpdatePayload(req.body);
+  if (!validated.ok) {
+    badRequest(res, validated.error);
+    return;
+  }
+
+  for (const [key, value] of Object.entries(validated.value.values)) {
     setSetting(key, value);
   }
-  // Restart scheduler if cron changed
-  if ('check_cron' in body) {
+
+  if (validated.value.shouldRestartScheduler) {
     restartScheduler();
   }
   res.json({ ok: true });

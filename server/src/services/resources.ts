@@ -73,6 +73,28 @@ function getService(doc: any, serviceName: string): ComposeService {
   return service;
 }
 
+function getResourcesFromDoc(doc: any, serviceName: string): ResourceConfig {
+  if (!isSafeKey(serviceName)) return {};
+  const services = doc?.services;
+  if (!services || typeof services !== 'object' || !hasOwn(services, serviceName)) return {};
+  const service = (services as Record<string, unknown>)[serviceName] as ComposeService | undefined;
+  if (!service || typeof service !== 'object') return {};
+
+  const deploy = service.deploy || {};
+  const resources = deploy.resources || {};
+  const limits = resources.limits || {};
+  const reservations = resources.reservations || {};
+
+  return {
+    limits_cpus: firstValue(limits.cpus, service.cpus),
+    limits_memory: firstValue(limits.memory, service.mem_limit),
+    reservations_cpus: firstValue(reservations.cpus),
+    reservations_memory: firstValue(reservations.memory, service.mem_reservation),
+    update_excluded: isUpdateExcluded(service.labels),
+    update_check_excluded: isUpdateCheckExcluded(service.labels),
+  };
+}
+
 function normalizeConfig(config: ResourceConfig): ResourceConfig {
   return {
     limits_cpus: normalizeValue(config.limits_cpus),
@@ -190,26 +212,8 @@ function setUpdateCheckExcludedLabel(service: ComposeService, excluded: boolean)
 
 /** Get current resource config for a specific service in a stack */
 export function getResourcesFromYaml(yamlContent: string, serviceName: string): ResourceConfig {
-  if (!isSafeKey(serviceName)) return {};
   const doc = parse(yamlContent);
-  const services = doc?.services;
-  if (!services || typeof services !== 'object' || !hasOwn(services, serviceName)) return {};
-  const service = (services as Record<string, unknown>)[serviceName] as ComposeService | undefined;
-  if (!service || typeof service !== 'object') return {};
-
-  const deploy = service.deploy || {};
-  const resources = deploy.resources || {};
-  const limits = resources.limits || {};
-  const reservations = resources.reservations || {};
-
-  return {
-    limits_cpus: firstValue(limits.cpus, service.cpus),
-    limits_memory: firstValue(limits.memory, service.mem_limit),
-    reservations_cpus: firstValue(reservations.cpus),
-    reservations_memory: firstValue(reservations.memory, service.mem_reservation),
-    update_excluded: isUpdateExcluded(service.labels),
-    update_check_excluded: isUpdateCheckExcluded(service.labels),
-  };
+  return getResourcesFromDoc(doc, serviceName);
 }
 
 /** Update resources for a service, returns the new YAML content */
@@ -289,7 +293,7 @@ export async function getStackResources(stackName: string): Promise<Record<strin
   if (doc?.services && typeof doc.services === 'object') {
     for (const svcName of Object.keys(doc.services)) {
       if (!isSafeKey(svcName)) continue;
-      result[svcName] = getResourcesFromYaml(content, svcName);
+      result[svcName] = getResourcesFromDoc(doc, svcName);
     }
   }
   return result;
