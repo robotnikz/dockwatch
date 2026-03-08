@@ -17,9 +17,13 @@ Branch: `audit/performance-architecture-security-coverage`
   - exclusion label toggling for map and array labels
   - deploy/resources write and cleanup behavior
 - Added IO tests for compose load/save integration functions in resources service.
+- Refactored API rate limiting into dedicated middleware for testability and cleaner architecture.
+- Added middleware unit tests for rate-limit window, rejection path, and reset behavior.
+- Added update-checker helper tests for image parsing, host allowlisting, and safe URL construction.
 
 ## Coverage Scope (Phase 1)
 - Focused target: `server/src/services/resources.ts`
+- Expanded target: `server/src/services/resources.ts`, `server/src/middleware/apiRateLimit.ts`
 - Thresholds (initial practical baseline):
   - lines: 70
   - statements: 70
@@ -27,8 +31,7 @@ Branch: `audit/performance-architecture-security-coverage`
   - functions: 85
 
 ## Next Audit Steps
-1. Add tests for `updateChecker.ts` registry validation and exclusion handling.
-2. Add middleware tests for API rate limiting behavior.
-3. Add route-level tests for settings webhook flow (masked value handling and read-only keys).
-4. Introduce lightweight load/perf sanity script for API hot paths.
-5. Expand coverage target to additional security-sensitive modules.
+1. Add route-level tests for settings webhook flow (masked value handling and read-only keys).
+2. Introduce lightweight load/perf sanity script for API hot paths.
+3. Expand coverage target to additional security-sensitive modules.
+4. Add architectural guard tests around scheduler/update-check interactions.

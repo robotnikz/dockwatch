@@ -31,7 +31,7 @@ function getAllowedRegistries(): Set<string> {
   return new Set(values.length > 0 ? values : DEFAULT_ALLOWED_REGISTRIES);
 }
 
-function isAllowedRegistryHost(registry: string): boolean {
+export function isAllowedRegistryHost(registry: string): boolean {
   const normalized = registry.trim().toLowerCase();
   if (!normalized) return false;
   if (!/^[a-z0-9.-]+(?::\d+)?$/.test(normalized)) return false;
@@ -42,7 +42,7 @@ function isAllowedRegistryHost(registry: string): boolean {
   return getAllowedRegistries().has(normalized) || getAllowedRegistries().has(hostOnly);
 }
 
-function buildManifestUrl(registry: string, repo: string, tag: string): URL {
+export function buildManifestUrl(registry: string, repo: string, tag: string): URL {
   const encodedRepo = repo
     .split('/')
     .map((part) => encodeURIComponent(part))
@@ -52,7 +52,7 @@ function buildManifestUrl(registry: string, repo: string, tag: string): URL {
 }
 
 /** Parse image reference into registry, repo, tag */
-function parseImage(image: string): { registry: string; repo: string; tag: string } {
+export function parseImage(image: string): { registry: string; repo: string; tag: string } {
   let registry = 'registry-1.docker.io';
   let ref = image.trim();
   let tag = 'latest';
