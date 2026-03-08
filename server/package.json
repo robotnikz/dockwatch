@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "perf:sanity": "node scripts/perf-sanity.mjs"
+    "perf:sanity": "node scripts/perf-sanity.mjs",
+    "perf:api": "node scripts/perf-api.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",
@@ -30,6 +31,7 @@
     "vitest": "^2.1.8",
     "@vitest/coverage-v8": "^2.1.8",
     "supertest": "^7.0.0",
-    "@types/supertest": "^6.0.3"
+    "@types/supertest": "^6.0.3",
+    "autocannon": "^8.0.0"
   }
 }

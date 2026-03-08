@@ -22,6 +22,7 @@ Branch: `audit/performance-architecture-security-coverage`
 - Added update-checker helper tests for image parsing, host allowlisting, and safe URL construction.
 - Added route-level tests for settings webhook flow (masked values, readonly keys, scheduler restart, error handling).
 - Added lightweight performance sanity script for hot-path pure functions.
+- Added API load sanity benchmark script (`perf:api`) using autocannon against running local server endpoints.
 - Added stack action streaming route tests (SSE success and error paths) for operational reliability.
 - Added scheduler decision-path tests for auto-update exclusion behavior.
 
