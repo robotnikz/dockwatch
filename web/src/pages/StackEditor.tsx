@@ -1,8 +1,10 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { getStack, getStacks, saveStack, deleteStack, stackUp, stackDown, stackRestart, stackUpdate, stackLogs, streamStackAction, type Stack } from '../api';
 import { AnsiUp } from 'ansi_up';
+import { parseDocument } from 'yaml';
 import ServiceConfigurator from '../components/ServiceConfigurator';
+import ConfirmModal from '../components/ConfirmModal';
 
 const ansiUp = new AnsiUp();
 
@@ -20,6 +22,28 @@ const TEMPLATE = `services:
       - "8080:80"
     restart: unless-stopped
 `;
+
+function escapeHtml(input: string): string {
+  return input
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+function highlightYaml(input: string): string {
+  return input
+    .split('\n')
+    .map((line) => {
+      let html = escapeHtml(line);
+      html = html.replace(/(#.*)$/g, '<span class="yaml-comment">$1</span>');
+      html = html.replace(/("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*')/g, '<span class="yaml-string">$1</span>');
+      html = html.replace(/^(\s*-\s*)?([A-Za-z0-9_.-]+)(\s*:)/, '$1<span class="yaml-key">$2</span>$3');
+      html = html.replace(/\b(true|false|yes|no|on|off|null)\b/gi, '<span class="yaml-bool">$1</span>');
+      html = html.replace(/\b\d+(?:\.\d+)?\b/g, '<span class="yaml-number">$&</span>');
+      return html;
+    })
+    .join('\n');
+}
 
 export default function StackEditor() {
   const { name } = useParams<{ name: string }>();
@@ -41,11 +65,30 @@ export default function StackEditor() {
     tone: 'running' | 'success' | 'error';
   }>({ visible: false, title: '', content: '', tone: 'running' });
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [logs, setLogs] = useState<string>('');
   const [error, setError] = useState('');
   const logsEndRef = useRef<HTMLDivElement>(null);
   const actionStreamEndRef = useRef<HTMLDivElement>(null);
   const hideActionStreamTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const composeTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const composeHighlightRef = useRef<HTMLPreElement>(null);
+
+  const yamlHighlightHtml = useMemo(() => highlightYaml(content), [content]);
+  const yamlValidation = useMemo(() => {
+    try {
+      const doc = parseDocument(content);
+      if (doc.errors.length > 0) {
+        return { valid: false, message: doc.errors[0].message };
+      }
+      return { valid: true, message: 'YAML syntax looks good.' };
+    } catch (err: any) {
+      return {
+        valid: false,
+        message: err?.message || 'YAML parse error',
+      };
+    }
+  }, [content]);
 
   const fetchStackInfo = async () => {
     if (!name) return;
@@ -133,16 +176,7 @@ export default function StackEditor() {
   const handleAction = async (action: 'up' | 'down' | 'restart' | 'update' | 'delete') => {
     if (!name) return;
     if (action === 'delete') {
-      if (!confirm(`Delete stack "${name}"? This will stop and remove all containers.`)) return;
-      setActionLoading(action);
-      try {
-        await deleteStack(name);
-        navigate('/');
-      } catch (err: any) {
-        setError(err.message);
-      } finally {
-        setActionLoading(null);
-      }
+      setShowDeleteConfirm(true);
       return;
     }
     
@@ -200,6 +234,20 @@ export default function StackEditor() {
     }
   };
 
+  const confirmDelete = async () => {
+    if (!name) return;
+    setShowDeleteConfirm(false);
+    setActionLoading('delete');
+    try {
+      await deleteStack(name);
+      navigate('/');
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const handleSave = async () => {
     const nextName = stackName.trim();
     if (!nextName) {
@@ -225,6 +273,14 @@ export default function StackEditor() {
     } finally {
       setActionLoading(null);
     }
+  };
+
+  const syncComposeScroll = () => {
+    if (!composeTextareaRef.current || !composeHighlightRef.current) {
+      return;
+    }
+    composeHighlightRef.current.scrollTop = composeTextareaRef.current.scrollTop;
+    composeHighlightRef.current.scrollLeft = composeTextareaRef.current.scrollLeft;
   };
 
   if (loading && !isNew) {
@@ -348,7 +404,7 @@ export default function StackEditor() {
                           <h3 className="text-lg font-medium text-white">{svc.Service}</h3>
                           <div className="flex flex-wrap gap-2 mt-2">
                             <span className={`rounded-xl px-3 py-1 text-xs font-semibold ${svc.State === 'running' ? 'bg-dock-accent/20 text-dock-accent' : 'bg-dock-border/50 text-dock-muted'}`}>
-                              {svc.State === 'running' ? 'healthy' : svc.State}
+                              {svc.State === 'running' ? 'running' : svc.State}
                             </span>
                           </div>
                         </div>
@@ -403,6 +459,14 @@ export default function StackEditor() {
               className={`px-4 py-2 rounded-t-xl text-sm font-medium transition ${activeTab === 'compose.yaml' ? 'bg-[#161720] text-white border-t border-l border-r border-dock-border/50' : 'text-dock-muted hover:text-white'}`}
             >
               compose.yaml
+              {isEditing ? (
+                <span
+                  className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-semibold ${yamlValidation.valid ? 'bg-dock-green/20 text-dock-green' : 'bg-dock-red/20 text-dock-red'}`}
+                  title={yamlValidation.message}
+                >
+                  {yamlValidation.valid ? 'valid' : 'invalid'}
+                </span>
+              ) : null}
             </button>
             <button
               onClick={() => setActiveTab('.env')}
@@ -416,12 +480,23 @@ export default function StackEditor() {
           <div className="flex-1 rounded-b-[1.25rem] rounded-tr-[1.25rem] border border-dock-border/50 bg-[#161720] shadow-inner overflow-hidden flex flex-col min-h-[500px] relative -mt-[1px]">
             {activeTab === 'compose.yaml' && (
               isEditing ? (
-                <textarea
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  spellCheck={false}
-                  className="w-full flex-1 resize-none bg-transparent p-4 text-sm font-mono text-gray-200 outline-none"
-                />
+                <div className="relative w-full flex-1 overflow-hidden">
+                  <pre
+                    ref={composeHighlightRef}
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 overflow-auto p-4 text-sm font-mono leading-6 text-gray-200"
+                    dangerouslySetInnerHTML={{ __html: `${yamlHighlightHtml}\n` }}
+                  />
+                  <textarea
+                    ref={composeTextareaRef}
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    onScroll={syncComposeScroll}
+                    wrap="off"
+                    spellCheck={false}
+                    className="absolute inset-0 w-full flex-1 resize-none overflow-auto bg-transparent p-4 text-sm font-mono leading-6 text-transparent caret-white outline-none selection:bg-dock-accent/30"
+                  />
+                </div>
               ) : (
                 <div className="w-full flex-1 overflow-auto p-4 scrollbar-thin">
                   <pre className="text-sm font-mono text-gray-300">{content}</pre>
@@ -448,6 +523,17 @@ export default function StackEditor() {
           </div>
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        title="Delete stack"
+        message={`Delete stack "${name}"? This will stop and remove all containers.`}
+        confirmLabel="Delete"
+        confirmTone="danger"
+        busy={actionLoading === 'delete'}
+        onCancel={() => setShowDeleteConfirm(false)}
+        onConfirm={confirmDelete}
+      />
     </div>
   );
 }

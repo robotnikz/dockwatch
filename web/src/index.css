@@ -84,3 +84,24 @@ pre {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+.yaml-key {
+  color: rgb(114 178 255);
+}
+
+.yaml-string {
+  color: rgb(196 181 253);
+}
+
+.yaml-number {
+  color: rgb(253 224 71);
+}
+
+.yaml-bool {
+  color: rgb(134 239 172);
+}
+
+.yaml-comment {
+  color: rgb(148 153 168);
+  font-style: italic;
+}

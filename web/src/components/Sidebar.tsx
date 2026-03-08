@@ -1,6 +1,7 @@
 import { useState, useEffect, type MouseEvent } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { getStacks, getAppVersionStatus, triggerSelfUpdate, type AppVersionStatus, type Stack } from '../api';
+import AppModal from './AppModal';
 
 export default function Sidebar() {
   const [stacks, setStacks] = useState<Stack[]>([]);
@@ -82,7 +83,7 @@ export default function Sidebar() {
           className="cursor-pointer rounded-full border border-amber-400/40 bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-300 transition hover:bg-amber-500/30 hover:text-amber-200"
           title="View release notes and update options"
         >
-          Update Available - Click
+          Update Available
         </button>
       );
     }
@@ -144,6 +145,24 @@ export default function Sidebar() {
       </div>
 
       <div className="p-4 border-t border-dock-border/50 space-y-2">
+        <NavLink 
+          to="/" 
+          className={({isActive}) => `block rounded-xl px-4 py-2 text-sm font-medium transition ${isActive ? 'text-dock-accent' : 'text-dock-muted hover:text-white'}`}
+        >
+          Overview
+        </NavLink>
+        <NavLink 
+          to="/cleanup" 
+          className={({isActive}) => `block rounded-xl px-4 py-2 text-sm font-medium transition ${isActive ? 'text-dock-accent' : 'text-dock-muted hover:text-white'}`}
+        >
+          Cleanup
+        </NavLink>
+        <NavLink 
+          to="/settings" 
+          className={({isActive}) => `block rounded-xl px-4 py-2 text-sm font-medium transition ${isActive ? 'text-dock-accent' : 'text-dock-muted hover:text-white'}`}
+        >
+          Settings
+        </NavLink>
         <div className="rounded-xl border border-dock-border/60 bg-dock-bg/40 px-4 py-3">
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs uppercase tracking-wide text-dock-muted">DockWatch</span>
@@ -169,106 +188,89 @@ export default function Sidebar() {
             Open on GitHub
           </a>
         </div>
-        <NavLink 
-          to="/" 
-          className={({isActive}) => `block rounded-xl px-4 py-2 text-sm font-medium transition ${isActive ? 'text-dock-accent' : 'text-dock-muted hover:text-white'}`}
-        >
-          Overview
-        </NavLink>
-        <NavLink 
-          to="/cleanup" 
-          className={({isActive}) => `block rounded-xl px-4 py-2 text-sm font-medium transition ${isActive ? 'text-dock-accent' : 'text-dock-muted hover:text-white'}`}
-        >
-          Cleanup
-        </NavLink>
-        <NavLink 
-          to="/settings" 
-          className={({isActive}) => `block rounded-xl px-4 py-2 text-sm font-medium transition ${isActive ? 'text-dock-accent' : 'text-dock-muted hover:text-white'}`}
-        >
-          Settings
-        </NavLink>
       </div>
 
-      {showUpdateModal ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 px-4">
-          <div className="w-full max-w-md rounded-2xl border border-dock-border bg-dock-card p-5 shadow-dock">
-            <h3 className="text-lg font-bold text-white">Update DockWatch</h3>
-            <div className="mt-2 rounded-xl border border-dock-border/60 bg-dock-bg/30 p-3">
-              <div className="text-xs uppercase tracking-wide text-dock-muted">Release Notes</div>
-              <div className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap text-xs leading-5 text-dock-text">
-                {appVersion?.releaseNotes || 'No release notes provided for this version.'}
-              </div>
-              <a
-                href={appVersion?.releaseUrl || appVersion?.githubUrl || 'https://github.com/robotnikz/dockwatch'}
-                target="_blank"
-                rel="noreferrer"
-                className="mt-2 inline-block text-xs font-semibold text-dock-accent hover:underline"
+      <AppModal
+        isOpen={showUpdateModal}
+        onClose={() => setShowUpdateModal(false)}
+        title="Update DockWatch"
+        maxWidthClassName="max-w-md"
+        footer={
+          !updating && reloadCountdown == null ? (
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowUpdateModal(false)}
+                className="rounded-xl border border-dock-border px-4 py-2 text-sm font-semibold text-dock-muted hover:text-white"
               >
-                Open full release page
-              </a>
+                Cancel
+              </button>
+              {selfUpdateSupported ? (
+                <button
+                  type="button"
+                  onClick={startSelfUpdate}
+                  className="rounded-xl bg-dock-accent px-4 py-2 text-sm font-bold text-dock-bg hover:bg-dock-accent/90"
+                >
+                  Update
+                </button>
+              ) : null}
             </div>
-
-            <p className="mt-3 text-sm text-dock-muted">
-              {selfUpdateSupported
-                ? (
-                  <>
-                    This will run <code>docker compose down && docker compose pull && docker compose up -d</code> in
-                    <code className="ml-1">{appVersion?.selfUpdate?.workingDir || 'configured directory'}</code>.
-                  </>
-                )
-                : (appVersion?.selfUpdate?.reason || 'Self-update is not available in this environment.')}
-            </p>
-
-            {updateError ? (
-              <div className="mt-3 rounded-xl border border-dock-red/30 bg-dock-red/10 px-3 py-2 text-sm text-dock-red">{updateError}</div>
-            ) : null}
-
-            {reloadCountdown != null ? (
-              <div className="mt-4 rounded-xl border border-dock-border/60 bg-dock-bg/30 p-3 text-sm text-dock-text">
-                Update started. Reloading in <span className="font-bold text-dock-accent">{reloadCountdown}s</span>.
-              </div>
-            ) : null}
-
-            {!updating && reloadCountdown == null ? (
-              <div className="mt-4 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowUpdateModal(false)}
-                  className="rounded-xl border border-dock-border px-4 py-2 text-sm font-semibold text-dock-muted hover:text-white"
-                >
-                  Cancel
-                </button>
-                {selfUpdateSupported ? (
-                  <button
-                    type="button"
-                    onClick={startSelfUpdate}
-                    className="rounded-xl bg-dock-accent px-4 py-2 text-sm font-bold text-dock-bg hover:bg-dock-accent/90"
-                  >
-                    Update
-                  </button>
-                ) : null}
-              </div>
-            ) : (
-              <div className="mt-4 flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => window.location.reload()}
-                  className="rounded-xl border border-dock-border px-4 py-2 text-sm font-semibold text-white hover:border-dock-accent/40"
-                >
-                  Refresh Now
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowUpdateModal(false)}
-                  className="rounded-xl border border-dock-border px-4 py-2 text-sm font-semibold text-dock-muted hover:text-white"
-                >
-                  Close
-                </button>
-              </div>
-            )}
+          ) : (
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="rounded-xl border border-dock-border px-4 py-2 text-sm font-semibold text-white hover:border-dock-accent/40"
+              >
+                Refresh Now
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowUpdateModal(false)}
+                className="rounded-xl border border-dock-border px-4 py-2 text-sm font-semibold text-dock-muted hover:text-white"
+              >
+                Close
+              </button>
+            </div>
+          )
+        }
+      >
+        <div className="rounded-xl border border-dock-border/60 bg-dock-bg/30 p-3">
+          <div className="text-xs uppercase tracking-wide text-dock-muted">Release Notes</div>
+          <div className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap text-xs leading-5 text-dock-text">
+            {appVersion?.releaseNotes || 'No release notes provided for this version.'}
           </div>
+          <a
+            href={appVersion?.releaseUrl || appVersion?.githubUrl || 'https://github.com/robotnikz/dockwatch'}
+            target="_blank"
+            rel="noreferrer"
+            className="mt-2 inline-block text-xs font-semibold text-dock-accent hover:underline"
+          >
+            Open full release page
+          </a>
         </div>
-      ) : null}
+
+        <p className="mt-3 text-sm text-dock-muted">
+          {selfUpdateSupported
+            ? (
+              <>
+                This will run <code>docker compose down && docker compose pull && docker compose up -d</code> in
+                <code className="ml-1">{appVersion?.selfUpdate?.workingDir || 'configured directory'}</code>.
+              </>
+            )
+            : (appVersion?.selfUpdate?.reason || 'Self-update is not available in this environment.')}
+        </p>
+
+        {updateError ? (
+          <div className="mt-3 rounded-xl border border-dock-red/30 bg-dock-red/10 px-3 py-2 text-sm text-dock-red">{updateError}</div>
+        ) : null}
+
+        {reloadCountdown != null ? (
+          <div className="mt-4 rounded-xl border border-dock-border/60 bg-dock-bg/30 p-3 text-sm text-dock-text">
+            Update started. Reloading in <span className="font-bold text-dock-accent">{reloadCountdown}s</span>.
+          </div>
+        ) : null}
+      </AppModal>
     </aside>
   );
 }
