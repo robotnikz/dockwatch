@@ -30,12 +30,14 @@ Branch: `audit/performance-architecture-security-coverage`
 - Added stack action streaming route tests (SSE success and error paths) for operational reliability.
 - Added scheduler decision-path tests for auto-update exclusion behavior.
 - Added updates route tests for cached retrieval, full check trigger, single-image check, and error paths.
+- Expanded stacks route tests for list/status derivation, non-stream action success/failure, logs/images, and detail/delete paths.
 
 ## Coverage Scope (Phase 1)
 - Focused target: `server/src/services/resources.ts`
 - Expanded target: `server/src/services/resources.ts`, `server/src/middleware/apiRateLimit.ts`
 - Expanded target: `server/src/services/resources.ts`, `server/src/middleware/apiRateLimit.ts`, `server/src/routes/settings.ts`
 - Expanded target: `server/src/services/resources.ts`, `server/src/middleware/apiRateLimit.ts`, `server/src/routes/settings.ts`, `server/src/routes/updates.ts`
+- Expanded target: `server/src/services/resources.ts`, `server/src/middleware/apiRateLimit.ts`, `server/src/routes/settings.ts`, `server/src/routes/updates.ts`, `server/src/routes/stacks.ts`
 - Thresholds (initial practical baseline):
   - lines: 70
   - statements: 70

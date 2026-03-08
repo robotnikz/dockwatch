@@ -13,6 +13,7 @@ export default defineConfig({
         'src/middleware/apiRateLimit.ts',
         'src/routes/settings.ts',
         'src/routes/updates.ts',
+        'src/routes/stacks.ts',
       ],
       all: true,
       thresholds: {

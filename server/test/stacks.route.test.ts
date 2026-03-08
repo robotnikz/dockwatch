@@ -116,4 +116,158 @@ describe('stacks routes', () => {
     expect(mocks.registerStack).toHaveBeenCalledWith('demo', '/opt/stacks/demo');
     expect(res.body.ok).toBe(true);
   });
+
+  it('lists stacks with running, partial, and stopped status resolution', async () => {
+    mocks.listStacks.mockResolvedValue(['run', 'partial', 'stopped']);
+    mocks.composePs
+      .mockResolvedValueOnce('{"Name":"a","State":"running"}\n{"Name":"b","State":"running"}')
+      .mockResolvedValueOnce('{"Name":"a","State":"running"}\n{"Name":"b","State":"exited"}')
+      .mockResolvedValueOnce('');
+
+    const res = await request(buildApp()).get('/stacks');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(3);
+    expect(res.body[0]).toMatchObject({ name: 'run', status: 'running' });
+    expect(res.body[1]).toMatchObject({ name: 'partial', status: 'partial' });
+    expect(res.body[2]).toMatchObject({ name: 'stopped', status: 'stopped' });
+  });
+
+  it('falls back to stopped status when compose ps fails', async () => {
+    mocks.listStacks.mockResolvedValue(['demo']);
+    mocks.composePs.mockRejectedValue(new Error('ps failed'));
+
+    const res = await request(buildApp()).get('/stacks');
+
+    expect(res.status).toBe(200);
+    expect(res.body[0]).toMatchObject({ name: 'demo', status: 'stopped' });
+  });
+
+  it('returns stack compose content and 404 when missing', async () => {
+    mocks.getComposeContent.mockResolvedValueOnce('services:\n  app:\n    image: nginx\n');
+    const okRes = await request(buildApp()).get('/stacks/demo');
+    expect(okRes.status).toBe(200);
+    expect(okRes.body.name).toBe('demo');
+
+    mocks.getComposeContent.mockRejectedValueOnce(new Error('missing'));
+    const notFoundRes = await request(buildApp()).get('/stacks/missing');
+    expect(notFoundRes.status).toBe(404);
+    expect(notFoundRes.body.error).toContain('Stack not found: missing');
+  });
+
+  it('deletes stack and unregisters it', async () => {
+    mocks.deleteStack.mockResolvedValue(undefined);
+    mocks.removeStack.mockReturnValue(undefined);
+
+    const res = await request(buildApp()).delete('/stacks/demo');
+
+    expect(res.status).toBe(200);
+    expect(res.body.ok).toBe(true);
+    expect(mocks.deleteStack).toHaveBeenCalledWith('demo');
+    expect(mocks.removeStack).toHaveBeenCalledWith('demo');
+  });
+
+  it('runs non-stream stack actions and returns command output', async () => {
+    mocks.composeDown.mockResolvedValue('down-ok');
+    mocks.composeRestart.mockResolvedValue('restart-ok');
+    mocks.composePull.mockResolvedValue('pull-ok');
+    mocks.composeManualUpdate.mockResolvedValue('update-ok');
+    mocks.composeManualUpdateService.mockResolvedValue('update-service-ok');
+    mocks.notifyStackAction.mockResolvedValue(undefined);
+
+    const downRes = await request(buildApp()).post('/stacks/demo/down');
+    expect(downRes.status).toBe(200);
+    expect(downRes.body).toEqual({ ok: true, output: 'down-ok' });
+
+    const restartRes = await request(buildApp()).post('/stacks/demo/restart');
+    expect(restartRes.status).toBe(200);
+    expect(restartRes.body).toEqual({ ok: true, output: 'restart-ok' });
+
+    const pullRes = await request(buildApp()).post('/stacks/demo/pull');
+    expect(pullRes.status).toBe(200);
+    expect(pullRes.body).toEqual({ ok: true, output: 'pull-ok' });
+
+    const updateRes = await request(buildApp()).post('/stacks/demo/update');
+    expect(updateRes.status).toBe(200);
+    expect(updateRes.body).toEqual({ ok: true, output: 'update-ok' });
+
+    const serviceRes = await request(buildApp()).post('/stacks/demo/update/app');
+    expect(serviceRes.status).toBe(200);
+    expect(serviceRes.body).toEqual({ ok: true, output: 'update-service-ok' });
+
+    expect(mocks.notifyStackAction).toHaveBeenCalledWith('demo', 'stopped', true);
+    expect(mocks.notifyStackAction).toHaveBeenCalledWith('demo', 'restarted', true);
+    expect(mocks.notifyStackAction).toHaveBeenCalledWith('demo', 'updated', true);
+    expect(mocks.notifyStackAction).toHaveBeenCalledWith('demo', 'updated service app', true);
+  });
+
+  it('returns 500 for non-stream action failures and marks failed notify action', async () => {
+    mocks.composeUp.mockRejectedValueOnce(new Error('up-failed'));
+    mocks.composeDown.mockRejectedValueOnce(new Error('down-failed'));
+    mocks.composeRestart.mockRejectedValueOnce(new Error('restart-failed'));
+    mocks.composePull.mockRejectedValueOnce(new Error('pull-failed'));
+    mocks.composeManualUpdate.mockRejectedValueOnce(new Error('update-failed'));
+    mocks.composeManualUpdateService.mockRejectedValueOnce(new Error('update-service-failed'));
+    mocks.notifyStackAction.mockResolvedValue(undefined);
+
+    const upRes = await request(buildApp()).post('/stacks/demo/up');
+    expect(upRes.status).toBe(500);
+    expect(upRes.body.error).toContain('up-failed');
+
+    const downRes = await request(buildApp()).post('/stacks/demo/down');
+    expect(downRes.status).toBe(500);
+    expect(downRes.body.error).toContain('down-failed');
+
+    const restartRes = await request(buildApp()).post('/stacks/demo/restart');
+    expect(restartRes.status).toBe(500);
+    expect(restartRes.body.error).toContain('restart-failed');
+
+    const pullRes = await request(buildApp()).post('/stacks/demo/pull');
+    expect(pullRes.status).toBe(500);
+    expect(pullRes.body.error).toContain('pull-failed');
+
+    const updateRes = await request(buildApp()).post('/stacks/demo/update');
+    expect(updateRes.status).toBe(500);
+    expect(updateRes.body.error).toContain('update-failed');
+
+    const serviceRes = await request(buildApp()).post('/stacks/demo/update/app');
+    expect(serviceRes.status).toBe(500);
+    expect(serviceRes.body.error).toContain('update-service-failed');
+
+    expect(mocks.notifyStackAction).toHaveBeenCalledWith('demo', 'start', false);
+    expect(mocks.notifyStackAction).toHaveBeenCalledWith('demo', 'stop', false);
+    expect(mocks.notifyStackAction).toHaveBeenCalledWith('demo', 'restart', false);
+    expect(mocks.notifyStackAction).toHaveBeenCalledWith('demo', 'update', false);
+    expect(mocks.notifyStackAction).toHaveBeenCalledWith('demo', 'update service app', false);
+  });
+
+  it('returns logs with tail clamped to 1000 and default fallback', async () => {
+    mocks.composeLogs.mockResolvedValue('line1\nline2');
+
+    const clamped = await request(buildApp()).get('/stacks/demo/logs?tail=5000');
+    expect(clamped.status).toBe(200);
+    expect(clamped.body.output).toContain('line1');
+    expect(mocks.composeLogs).toHaveBeenCalledWith('demo', 1000);
+
+    const fallback = await request(buildApp()).get('/stacks/demo/logs?tail=abc');
+    expect(fallback.status).toBe(200);
+    expect(mocks.composeLogs).toHaveBeenCalledWith('demo', 100);
+  });
+
+  it('returns stack images and handles image/log route errors', async () => {
+    mocks.getStackImages.mockResolvedValueOnce(['nginx:latest']);
+    const imagesOk = await request(buildApp()).get('/stacks/demo/images');
+    expect(imagesOk.status).toBe(200);
+    expect(imagesOk.body.images).toEqual(['nginx:latest']);
+
+    mocks.getStackImages.mockRejectedValueOnce(new Error('images-failed'));
+    const imagesFail = await request(buildApp()).get('/stacks/demo/images');
+    expect(imagesFail.status).toBe(500);
+    expect(imagesFail.body.error).toContain('images-failed');
+
+    mocks.composeLogs.mockRejectedValueOnce(new Error('logs-failed'));
+    const logsFail = await request(buildApp()).get('/stacks/demo/logs');
+    expect(logsFail.status).toBe(500);
+    expect(logsFail.body.error).toContain('logs-failed');
+  });
 });
