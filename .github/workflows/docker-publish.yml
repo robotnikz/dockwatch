@@ -12,6 +12,7 @@ on:
     tags: [ 'v*.*.*' ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
 
 env:
   # Use docker.io for Docker Hub if empty
@@ -127,17 +128,52 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     permissions:
+      actions: write
       contents: write
       issues: write
       pull-requests: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Capture latest semver tag before release
+        id: semver_before
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+          prev_tag="$(git tag --list 'v*.*.*' --sort=-version:refname | head -n1 || true)"
+          echo "tag=${prev_tag}" >> "$GITHUB_OUTPUT"
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
+
       - run: npm install -g semantic-release @semantic-release/git @semantic-release/changelog @semantic-release/commit-analyzer @semantic-release/release-notes-generator conventional-changelog-conventionalcommits
+
       - name: Semantic Release
+        id: semantic_release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: semantic-release
+
+      - name: Capture latest semver tag after release
+        id: semver_after
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+          new_tag="$(git tag --list 'v*.*.*' --sort=-version:refname | head -n1 || true)"
+          echo "tag=${new_tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Trigger Docker release build for new tag
+        if: steps.semver_after.outputs.tag != '' && steps.semver_after.outputs.tag != steps.semver_before.outputs.tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api \
+            --method POST \
+            repos/${{ github.repository }}/actions/workflows/docker-publish.yml/dispatches \
+            -f ref='${{ steps.semver_after.outputs.tag }}'
