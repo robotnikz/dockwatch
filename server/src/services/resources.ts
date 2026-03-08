@@ -94,7 +94,7 @@ function getService(doc: any, serviceName: string): ComposeService {
   }
 
   // Work on a safe clone to avoid mutating tainted/plain objects from YAML parser.
-  const safeService = sanitizeParsedValue(service) as ComposeService;
+  const safeService = JSON.parse(JSON.stringify(sanitizeParsedValue(service))) as ComposeService;
   (doc.services as Record<string, unknown>)[serviceName] = safeService;
 
   return safeService;
@@ -165,12 +165,12 @@ function setUpdateExcludedLabel(service: ComposeService, excluded: boolean): voi
 
   if (labels && typeof labels === 'object') {
     const source = labels as Record<string, unknown>;
-    const safeEntries = Object.entries(source)
-      .filter(([entryKey]) => isSafeKey(entryKey) && entryKey !== key)
+      const safeEntries = Object.entries(source)
+        .filter(([entryKey]) => isSafeKey(entryKey) && entryKey !== 'dockwatch.update.exclude')
       .map(([entryKey, entryValue]) => [entryKey, String(entryValue)] as const);
 
     const mapLabels = Object.fromEntries(safeEntries) as Record<string, string>;
-    if (excluded) mapLabels[key] = 'true';
+      if (excluded) mapLabels['dockwatch.update.exclude'] = 'true';
     if (Object.keys(mapLabels).length === 0) delete service.labels;
     else service.labels = mapLabels;
     return;
@@ -178,7 +178,7 @@ function setUpdateExcludedLabel(service: ComposeService, excluded: boolean): voi
 
   if (excluded) {
     const mapLabels = createSafeRecord<string>();
-    mapLabels[key] = 'true';
+    mapLabels['dockwatch.update.exclude'] = 'true';
     service.labels = mapLabels;
   } else {
     delete service.labels;
@@ -217,12 +217,12 @@ function setUpdateCheckExcludedLabel(service: ComposeService, excluded: boolean)
 
   if (labels && typeof labels === 'object') {
     const source = labels as Record<string, unknown>;
-    const safeEntries = Object.entries(source)
-      .filter(([entryKey]) => isSafeKey(entryKey) && entryKey !== key)
+      const safeEntries = Object.entries(source)
+        .filter(([entryKey]) => isSafeKey(entryKey) && entryKey !== 'dockwatch.update.check.exclude')
       .map(([entryKey, entryValue]) => [entryKey, String(entryValue)] as const);
 
     const mapLabels = Object.fromEntries(safeEntries) as Record<string, string>;
-    if (excluded) mapLabels[key] = 'true';
+      if (excluded) mapLabels['dockwatch.update.check.exclude'] = 'true';
     if (Object.keys(mapLabels).length === 0) delete service.labels;
     else service.labels = mapLabels;
     return;
@@ -230,7 +230,7 @@ function setUpdateCheckExcludedLabel(service: ComposeService, excluded: boolean)
 
   if (excluded) {
     const mapLabels = createSafeRecord<string>();
-    mapLabels[key] = 'true';
+    mapLabels['dockwatch.update.check.exclude'] = 'true';
     service.labels = mapLabels;
   } else {
     delete service.labels;

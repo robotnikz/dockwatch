@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import rateLimit from 'express-rate-limit';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -18,7 +19,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export function createApp() {
   const app = express();
   const apiRateLimit = createApiRateLimit({ windowMs: 60_000, maxRequests: 180 });
-  const pageRateLimit = createApiRateLimit({ windowMs: 60_000, maxRequests: 600 });
+  const pageRateLimit = rateLimit({
+    windowMs: 60_000,
+    limit: 600,
+    standardHeaders: true,
+    legacyHeaders: false,
+  });
 
   app.use(cors());
   app.use(express.json({ limit: '1mb' }));
