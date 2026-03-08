@@ -34,6 +34,9 @@ Branch: `audit/performance-architecture-security-coverage`
 - Expanded stacks route tests for list/status derivation, non-stream action success/failure, logs/images, and detail/delete paths.
 - Added cleanup route tests for config updates, run/stream execution, preview/reset behavior, and error handling.
 - Added stats route tests for aggregate/containers/host endpoints and failure paths.
+- Added meta route tests for version/status retrieval and self-update trigger error handling.
+- Added convert route tests for payload validation and conversion error behavior.
+- Added resources route tests for stack fetch/update success and error paths.
 
 ## Coverage Scope (Phase 1)
 - Focused target: `server/src/services/resources.ts`
@@ -42,6 +45,7 @@ Branch: `audit/performance-architecture-security-coverage`
 - Expanded target: `server/src/services/resources.ts`, `server/src/middleware/apiRateLimit.ts`, `server/src/routes/settings.ts`, `server/src/routes/updates.ts`
 - Expanded target: `server/src/services/resources.ts`, `server/src/middleware/apiRateLimit.ts`, `server/src/routes/settings.ts`, `server/src/routes/updates.ts`, `server/src/routes/stacks.ts`
 - Expanded target: `server/src/services/resources.ts`, `server/src/middleware/apiRateLimit.ts`, `server/src/routes/settings.ts`, `server/src/routes/updates.ts`, `server/src/routes/stacks.ts`, `server/src/routes/cleanup.ts`, `server/src/routes/stats.ts`
+- Expanded target: `server/src/services/resources.ts`, `server/src/middleware/apiRateLimit.ts`, `server/src/routes/settings.ts`, `server/src/routes/updates.ts`, `server/src/routes/stacks.ts`, `server/src/routes/cleanup.ts`, `server/src/routes/stats.ts`, `server/src/routes/meta.ts`, `server/src/routes/convert.ts`, `server/src/routes/resources.ts`
 - Thresholds (initial practical baseline):
   - lines: 70
   - statements: 70
