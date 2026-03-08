@@ -150,6 +150,38 @@ async function fetchLatestReleaseVersion(): Promise<{ latestVersion: string; rel
   };
 }
 
+interface SemverTag {
+  version: string;
+  commitSha: string;
+}
+
+async function fetchSemverTags(): Promise<SemverTag[]> {
+  const response = await fetch(TAGS_API_URL, {
+    headers: getGithubHeaders(),
+  });
+  if (!response.ok) {
+    return [];
+  }
+
+  const tags = (await response.json()) as Array<{ name?: string; commit?: { sha?: string } }>;
+  return tags
+    .map((tag) => {
+      const version = extractSemverPrefix(tag.name || '');
+      const commitSha = (tag.commit?.sha || '').trim();
+      if (!version || !commitSha) return null;
+      return { version, commitSha };
+    })
+    .filter((tag): tag is SemverTag => Boolean(tag));
+}
+
+async function resolveVersionFromRevision(currentRevision: string): Promise<string | null> {
+  const tags = await fetchSemverTags();
+  const current = currentRevision.trim().toLowerCase();
+
+  const hit = tags.find((tag) => tag.commitSha.toLowerCase() === current);
+  return hit?.version || null;
+}
+
 function isSemverLike(version: string): boolean {
   return /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(normalizeVersion(version));
 }
@@ -186,10 +218,19 @@ export async function getAppVersionStatus(force = false): Promise<AppVersionStat
 
   try {
     const { latestVersion, releaseUrl } = await fetchLatestReleaseVersion();
+    let displayVersion = currentVersion;
+
+    if (!isSemverLike(displayVersion) && currentRevision) {
+      const resolvedVersion = await resolveVersionFromRevision(currentRevision);
+      if (resolvedVersion) {
+        displayVersion = resolvedVersion;
+      }
+    }
+
     let updateAvailable = false;
 
-    if (isSemverLike(currentVersion)) {
-      updateAvailable = compareVersions(latestVersion, currentVersion) > 0;
+    if (isSemverLike(displayVersion)) {
+      updateAvailable = compareVersions(latestVersion, displayVersion) > 0;
     } else if (currentRevision) {
       const behind = await isCurrentBehindLatestRelease(latestVersion, currentRevision);
       if (behind !== null) {
@@ -198,7 +239,7 @@ export async function getAppVersionStatus(force = false): Promise<AppVersionStat
     }
 
     cache = {
-      currentVersion,
+      currentVersion: displayVersion,
       currentRevision,
       latestVersion,
       updateAvailable,
