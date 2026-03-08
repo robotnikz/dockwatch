@@ -1,8 +1,15 @@
 import { Router, type Request, type Response } from 'express';
+import rateLimit from 'express-rate-limit';
 import { getAppVersionStatus } from '../services/appVersion.js';
 import { getSelfUpdateInfo, triggerSelfUpdate } from '../services/selfUpdate.js';
 
 const router = Router();
+const selfUpdateRateLimit = rateLimit({
+  windowMs: 60_000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 router.get('/version', async (req: Request, res: Response) => {
   try {
@@ -15,7 +22,7 @@ router.get('/version', async (req: Request, res: Response) => {
   }
 });
 
-router.post('/self-update', (_req: Request, res: Response) => {
+router.post('/self-update', selfUpdateRateLimit, (_req: Request, res: Response) => {
   try {
     const result = triggerSelfUpdate();
     res.json(result);

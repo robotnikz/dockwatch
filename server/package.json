@@ -17,6 +17,7 @@
     "better-sqlite3": "^11.7.0",
     "cors": "^2.8.5",
     "express": "^4.21.0",
+    "express-rate-limit": "^7.5.1",
     "node-cron": "^3.0.3",
     "yaml": "^2.6.0"
   },
@@ -26,12 +27,12 @@
     "@types/express": "^5.0.0",
     "@types/node": "^22.10.0",
     "@types/node-cron": "^3.0.11",
+    "@types/supertest": "^6.0.3",
+    "@vitest/coverage-v8": "^2.1.8",
+    "autocannon": "^8.0.0",
+    "supertest": "^7.0.0",
     "tsx": "^4.19.0",
     "typescript": "^5.7.0",
-    "vitest": "^2.1.8",
-    "@vitest/coverage-v8": "^2.1.8",
-    "supertest": "^7.0.0",
-    "@types/supertest": "^6.0.3",
-    "autocannon": "^8.0.0"
+    "vitest": "^2.1.8"
   }
 }
