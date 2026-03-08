@@ -27,6 +27,7 @@ Branch: `audit/performance-architecture-security-coverage`
   - validates Discord webhook URL format before persistence
 - Added lightweight performance sanity script for hot-path pure functions.
 - Added API load sanity benchmark script (`perf:api`) using autocannon against running local server endpoints.
+- Wired `perf:sanity` into CI as a non-blocking signal to continuously surface perf drift.
 - Added stack action streaming route tests (SSE success and error paths) for operational reliability.
 - Added scheduler decision-path tests for auto-update exclusion behavior.
 - Added updates route tests for cached retrieval, full check trigger, single-image check, and error paths.

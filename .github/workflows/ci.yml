@@ -40,3 +40,8 @@ jobs:
       - name: Test Server (Coverage)
         working-directory: ./server
         run: npm run test:coverage
+
+      - name: Perf Sanity (Server)
+        working-directory: ./server
+        run: npm run perf:sanity
+        continue-on-error: true
