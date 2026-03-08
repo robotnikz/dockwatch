@@ -11,6 +11,26 @@ export interface ResourceConfig {
 }
 
 type ComposeService = Record<string, any>;
+const FORBIDDEN_KEYS = new Set(['__proto__', 'prototype', 'constructor']);
+
+function isSafeKey(key: string): boolean {
+  return !FORBIDDEN_KEYS.has(String(key));
+}
+
+function ensureSafeKey(key: string, context: string): void {
+  if (!isSafeKey(key)) {
+    throw new Error(`Invalid ${context}`);
+  }
+}
+
+function hasOwn(obj: unknown, key: string): boolean {
+  if (!obj || typeof obj !== 'object') return false;
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+function createSafeRecord<T>(): Record<string, T> {
+  return Object.create(null) as Record<string, T>;
+}
 
 function normalizeValue(value: unknown): string | undefined {
   if (value === null || value === undefined) {
@@ -40,7 +60,12 @@ function cleanupEmptyObject(target: Record<string, unknown>, key: string): void 
 }
 
 function getService(doc: any, serviceName: string): ComposeService {
-  const service = doc?.services?.[serviceName];
+  ensureSafeKey(serviceName, 'service name');
+  if (!doc?.services || typeof doc.services !== 'object' || !hasOwn(doc.services, serviceName)) {
+    throw new Error(`Service "${serviceName}" not found in compose file`);
+  }
+
+  const service = (doc.services as Record<string, unknown>)[serviceName];
   if (!service || typeof service !== 'object') {
     throw new Error(`Service "${serviceName}" not found in compose file`);
   }
@@ -90,15 +115,22 @@ function setUpdateExcludedLabel(service: ComposeService, excluded: boolean): voi
   }
 
   if (labels && typeof labels === 'object') {
-    const mapLabels = labels as Record<string, unknown>;
+    const source = labels as Record<string, unknown>;
+    const mapLabels = createSafeRecord<string>();
+    for (const [entryKey, entryValue] of Object.entries(source)) {
+      if (!isSafeKey(entryKey) || entryKey === key) continue;
+      mapLabels[entryKey] = String(entryValue);
+    }
     if (excluded) mapLabels[key] = 'true';
-    else delete mapLabels[key];
     if (Object.keys(mapLabels).length === 0) delete service.labels;
+    else service.labels = mapLabels;
     return;
   }
 
   if (excluded) {
-    service.labels = { [key]: 'true' };
+    const mapLabels = createSafeRecord<string>();
+    mapLabels[key] = 'true';
+    service.labels = mapLabels;
   } else {
     delete service.labels;
   }
@@ -135,15 +167,22 @@ function setUpdateCheckExcludedLabel(service: ComposeService, excluded: boolean)
   }
 
   if (labels && typeof labels === 'object') {
-    const mapLabels = labels as Record<string, unknown>;
+    const source = labels as Record<string, unknown>;
+    const mapLabels = createSafeRecord<string>();
+    for (const [entryKey, entryValue] of Object.entries(source)) {
+      if (!isSafeKey(entryKey) || entryKey === key) continue;
+      mapLabels[entryKey] = String(entryValue);
+    }
     if (excluded) mapLabels[key] = 'true';
-    else delete mapLabels[key];
     if (Object.keys(mapLabels).length === 0) delete service.labels;
+    else service.labels = mapLabels;
     return;
   }
 
   if (excluded) {
-    service.labels = { [key]: 'true' };
+    const mapLabels = createSafeRecord<string>();
+    mapLabels[key] = 'true';
+    service.labels = mapLabels;
   } else {
     delete service.labels;
   }
@@ -151,8 +190,11 @@ function setUpdateCheckExcludedLabel(service: ComposeService, excluded: boolean)
 
 /** Get current resource config for a specific service in a stack */
 export function getResourcesFromYaml(yamlContent: string, serviceName: string): ResourceConfig {
+  if (!isSafeKey(serviceName)) return {};
   const doc = parse(yamlContent);
-  const service = doc?.services?.[serviceName] as ComposeService | undefined;
+  const services = doc?.services;
+  if (!services || typeof services !== 'object' || !hasOwn(services, serviceName)) return {};
+  const service = (services as Record<string, unknown>)[serviceName] as ComposeService | undefined;
   if (!service || typeof service !== 'object') return {};
 
   const deploy = service.deploy || {};
@@ -242,10 +284,11 @@ export function setResourcesInYaml(yamlContent: string, serviceName: string, con
 export async function getStackResources(stackName: string): Promise<Record<string, ResourceConfig>> {
   const content = await getComposeContent(stackName);
   const doc = parse(content);
-  const result: Record<string, ResourceConfig> = {};
+  const result: Record<string, ResourceConfig> = createSafeRecord<ResourceConfig>();
 
-  if (doc?.services) {
+  if (doc?.services && typeof doc.services === 'object') {
     for (const svcName of Object.keys(doc.services)) {
+      if (!isSafeKey(svcName)) continue;
       result[svcName] = getResourcesFromYaml(content, svcName);
     }
   }

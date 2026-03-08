@@ -15,7 +15,14 @@ export async function sendDiscordMessage(content: string, embeds?: object[]): Pr
   // Validate webhook URL format
   try {
     const url = new URL(webhookUrl);
-    if (!url.hostname.endsWith('discord.com') || !url.pathname.startsWith('/api/webhooks/')) {
+    const host = url.hostname.toLowerCase();
+    const isAllowedHost =
+      host === 'discord.com' ||
+      host === 'discordapp.com' ||
+      host.endsWith('.discord.com') ||
+      host.endsWith('.discordapp.com');
+
+    if (url.protocol !== 'https:' || !isAllowedHost || !url.pathname.startsWith('/api/webhooks/')) {
       console.error('Invalid Discord webhook URL format');
       return;
     }

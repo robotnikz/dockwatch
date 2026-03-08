@@ -9,6 +9,48 @@ interface RegistryToken {
   token: string;
 }
 
+const DEFAULT_ALLOWED_REGISTRIES = [
+  'registry-1.docker.io',
+  'ghcr.io',
+  'quay.io',
+  'lscr.io',
+  'mcr.microsoft.com',
+];
+
+function getAllowedRegistries(): Set<string> {
+  const raw = String(process.env.DOCKWATCH_ALLOWED_REGISTRIES || '').trim();
+  if (!raw) {
+    return new Set(DEFAULT_ALLOWED_REGISTRIES);
+  }
+
+  const values = raw
+    .split(',')
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+
+  return new Set(values.length > 0 ? values : DEFAULT_ALLOWED_REGISTRIES);
+}
+
+function isAllowedRegistryHost(registry: string): boolean {
+  const normalized = registry.trim().toLowerCase();
+  if (!normalized) return false;
+  if (!/^[a-z0-9.-]+(?::\d+)?$/.test(normalized)) return false;
+
+  const hostOnly = normalized.split(':')[0];
+  if (hostOnly === 'localhost') return false;
+
+  return getAllowedRegistries().has(normalized) || getAllowedRegistries().has(hostOnly);
+}
+
+function buildManifestUrl(registry: string, repo: string, tag: string): URL {
+  const encodedRepo = repo
+    .split('/')
+    .map((part) => encodeURIComponent(part))
+    .join('/');
+  const encodedTag = encodeURIComponent(tag);
+  return new URL(`https://${registry}/v2/${encodedRepo}/manifests/${encodedTag}`);
+}
+
 /** Parse image reference into registry, repo, tag */
 function parseImage(image: string): { registry: string; repo: string; tag: string } {
   let registry = 'registry-1.docker.io';
@@ -51,6 +93,10 @@ function parseImage(image: string): { registry: string; repo: string; tag: strin
 /** Get remote manifest digest from registry */
 async function getRemoteDigest(image: string): Promise<string | null> {
   const { registry, repo, tag } = parseImage(image);
+  if (!isAllowedRegistryHost(registry)) {
+    console.warn('[UpdateChecker] Skipping image from non-allowed registry host', { registry, image });
+    return null;
+  }
 
   try {
     let headers: Record<string, string> = {
@@ -59,14 +105,16 @@ async function getRemoteDigest(image: string): Promise<string | null> {
 
     // Docker Hub needs a token
     if (registry === 'registry-1.docker.io') {
-      const tokenUrl = `https://auth.docker.io/token?service=registry.docker.io&scope=repository:${repo}:pull`;
+      const tokenUrl = new URL('https://auth.docker.io/token');
+      tokenUrl.searchParams.set('service', 'registry.docker.io');
+      tokenUrl.searchParams.set('scope', `repository:${repo}:pull`);
       const tokenResp = await fetch(tokenUrl);
       if (!tokenResp.ok) return null;
       const tokenData = await tokenResp.json() as RegistryToken;
       headers['Authorization'] = `Bearer ${tokenData.token}`;
     }
 
-    const manifestUrl = `https://${registry}/v2/${repo}/manifests/${tag}`;
+    const manifestUrl = buildManifestUrl(registry, repo, tag);
     const resp = await fetch(manifestUrl, { method: 'HEAD', headers });
 
     if (!resp.ok) return null;
@@ -74,7 +122,10 @@ async function getRemoteDigest(image: string): Promise<string | null> {
     const digest = resp.headers.get('docker-content-digest');
     return digest;
   } catch (err) {
-    console.error(`Failed to check remote digest for ${image}:`, err);
+    console.error('[UpdateChecker] Failed to check remote digest', {
+      image,
+      error: err instanceof Error ? err.message : String(err),
+    });
     return null;
   }
 }

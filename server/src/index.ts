@@ -20,8 +20,35 @@ const PORT = parseInt(process.env.PORT || '3000', 10);
 
 const app = express();
 
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_MAX_REQUESTS = 180;
+const requestBuckets = new Map<string, { count: number; resetAt: number }>();
+
+function apiRateLimit(req: express.Request, res: express.Response, next: express.NextFunction): void {
+  const now = Date.now();
+  const key = req.ip || req.socket.remoteAddress || 'unknown';
+  const bucket = requestBuckets.get(key);
+
+  if (!bucket || bucket.resetAt <= now) {
+    requestBuckets.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
+    next();
+    return;
+  }
+
+  if (bucket.count >= RATE_LIMIT_MAX_REQUESTS) {
+    const retryAfterSeconds = Math.max(1, Math.ceil((bucket.resetAt - now) / 1000));
+    res.setHeader('Retry-After', String(retryAfterSeconds));
+    res.status(429).json({ error: 'Too many requests' });
+    return;
+  }
+
+  bucket.count += 1;
+  next();
+}
+
 app.use(cors());
 app.use(express.json({ limit: '1mb' }));
+app.use('/api', apiRateLimit);
 
 // API routes
 app.use('/api/stacks', stacksRouter);

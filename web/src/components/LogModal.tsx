@@ -22,8 +22,7 @@ export default function LogModal({ name, output, onClose }: Props) {
     
     // Fix unicode escapes if they got mangled over JSON
     const fixedOut = raw.replace(/\\u001b/g, '\x1b')
-                       .replace(/\\x1b/g, '\x1b')
-                       .replace(//g, '\x1b');
+                       .replace(/\\x1b/g, '\x1b');
 
     const html = ansi_up.ansi_to_html(fixedOut);
     setHtmlContent(html);
