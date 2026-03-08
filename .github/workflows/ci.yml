@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install dependencies (Server)
+        working-directory: ./server
+        run: npm ci
+
+      - name: Install dependencies (Web)
+        working-directory: ./web
+        run: npm ci
+
+      - name: Typecheck (Server)
+        working-directory: ./server
+        run: npx tsc --noEmit
+
+      - name: Typecheck (Web)
+        working-directory: ./web
+        run: npx tsc --noEmit
+
+      - name: Build Web
+        working-directory: ./web
+        run: npx vite build

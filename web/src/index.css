@@ -1,0 +1,107 @@
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --dock-bg: 19 20 28;
+  --dock-card: 26 28 39;
+  --dock-panel: 34 37 50;
+  --dock-border: 45 47 62;
+  --dock-accent: 114 178 255;
+  --dock-accent-soft: 55 90 140;
+  --dock-green: 134 239 172;
+  --dock-red: 252 165 165;
+  --dock-yellow: 253 224 71;
+  --dock-text: 220 220 226;
+  --dock-muted: 148 153 168;
+}
+
+html {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Space Grotesk', 'Segoe UI', sans-serif;
+  margin: 0;
+  min-height: 100vh;
+  color: rgb(var(--dock-text));
+  background: rgb(var(--dock-bg));
+}
+
+body::before {
+  display: none;
+}
+
+a {
+  color: inherit;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+code,
+pre {
+  font-family: 'IBM Plex Mono', 'Cascadia Code', monospace;
+}
+
+::selection {
+  background: rgba(114, 178, 255, 0.3);
+  color: rgb(var(--dock-text));
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: rgba(26, 28, 39, 0.82);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(69, 71, 98, 0.88);
+  border-radius: 999px;
+  border: 2px solid rgba(26, 28, 39, 0.82);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(90, 93, 126, 0.96);
+}
+
+.log-output {
+  font-size: 0.8rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.yaml-key {
+  color: rgb(114 178 255);
+}
+
+.yaml-string {
+  color: rgb(196 181 253);
+}
+
+.yaml-number {
+  color: rgb(253 224 71);
+}
+
+.yaml-bool {
+  color: rgb(134 239 172);
+}
+
+.yaml-comment {
+  color: rgb(148 153 168);
+  font-style: italic;
+}
