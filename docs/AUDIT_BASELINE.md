@@ -31,6 +31,9 @@ Branch: `audit/performance-architecture-security-coverage`
 - Added manual CI benchmark workflow for `perf:api` with benchmark output artifact upload.
 - Added `docs/PERF_API_BASELINE.md` with initial API throughput/latency baseline snapshot.
 - Added non-blocking CI threshold warnings in `perf-api` workflow to surface req/s drops and latency increases.
+- Added shared HTTP response helpers for consistent route error responses.
+- Centralized typed payload validation schemas for high-risk routes (`settings`, `cleanup`, `resources`).
+- Added scheduler/update-check assumptions documentation (`docs/SCHEDULER_UPDATE_ASSUMPTIONS.md`).
 - Added stack action streaming route tests (SSE success and error paths) for operational reliability.
 - Added scheduler decision-path tests for auto-update exclusion behavior.
 - Added updates route tests for cached retrieval, full check trigger, single-image check, and error paths.

@@ -40,9 +40,9 @@ Current mode: `Audit complete, implementation deferred until explicit start sign
 - [x] Add threshold warnings (non-blocking) for regressions vs baseline (+/- percentage).
 
 ### P2 - Architecture and Maintainability
-- [ ] Extract shared route error handling helper to reduce repeated `try/catch` response patterns.
-- [ ] Add typed request payload schemas for high-risk routes (`settings`, `cleanup`, `resources`).
-- [ ] Add module-level docs for scheduler/update-check interaction assumptions.
+- [x] Extract shared route error handling helper to reduce repeated `try/catch` response patterns.
+- [x] Add typed request payload schemas for high-risk routes (`settings`, `cleanup`, `resources`).
+- [x] Add module-level docs for scheduler/update-check interaction assumptions.
 
 ## Merge Strategy
 1. Merge P0 items first with tests.

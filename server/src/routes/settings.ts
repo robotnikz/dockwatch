@@ -2,58 +2,10 @@ import { Router, type Request, type Response } from 'express';
 import { getAllSettings, getSetting, setSetting } from '../db.js';
 import { testWebhook } from '../services/discord.js';
 import { restartScheduler } from '../services/scheduler.js';
+import { validateSettingsUpdatePayload } from '../validation/settings.js';
+import { badRequest } from '../utils/httpResponses.js';
 
 const router = Router();
-
-const ALLOWED_KEYS = [
-  'discord_webhook',
-  'discord_notify_actions',
-  'discord_notify_container_updates',
-  'discord_notify_prune_messages',
-  'check_cron',
-  'update_exclusions',
-  'prunemate_url',
-  'cleanup_schedule_enabled',
-  'cleanup_schedule_frequency',
-  'cleanup_schedule_time',
-  'cleanup_protection_enabled',
-  'cleanup_protected_image_labels',
-  'cleanup_protected_volume_labels',
-  'cleanup_option_containers',
-  'cleanup_option_images',
-  'cleanup_option_networks',
-  'cleanup_option_volumes',
-  'cleanup_option_build_cache',
-  'cleanup_last_schedule_key',
-];
-
-const READONLY_UI_KEYS = new Set(['discord_webhook_set']);
-const MAX_SETTING_VALUE_LENGTH = 4096;
-
-function looksMaskedWebhook(value: string): boolean {
-  const trimmed = String(value || '').trim();
-  return trimmed.includes('...') && /^https?:\/\//i.test(trimmed);
-}
-
-function isPrimitiveSettingValue(value: unknown): value is string | number | boolean {
-  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean';
-}
-
-function isWebhookLike(value: string): boolean {
-  if (!value) return true;
-  try {
-    const url = new URL(value);
-    const host = url.hostname.toLowerCase();
-    const isAllowedHost =
-      host === 'discord.com' ||
-      host === 'discordapp.com' ||
-      host.endsWith('.discord.com') ||
-      host.endsWith('.discordapp.com');
-    return url.protocol === 'https:' && isAllowedHost && url.pathname.startsWith('/api/webhooks/');
-  } catch {
-    return false;
-  }
-}
 
 router.get('/', (_req: Request, res: Response) => {
   const settings = getAllSettings();
@@ -67,39 +19,17 @@ router.get('/', (_req: Request, res: Response) => {
 });
 
 router.put('/', (req: Request, res: Response) => {
-  const body = req.body as Record<string, unknown>;
-  for (const [key, value] of Object.entries(body)) {
-    if (READONLY_UI_KEYS.has(key)) {
-      continue;
-    }
-    if (!ALLOWED_KEYS.includes(key)) {
-      res.status(400).json({ error: `Unknown setting: ${key}` });
-      return;
-    }
-    if (!isPrimitiveSettingValue(value)) {
-      res.status(400).json({ error: `Invalid value type for setting: ${key}` });
-      return;
-    }
-
-    const normalized = String(value);
-    if (normalized.length > MAX_SETTING_VALUE_LENGTH) {
-      res.status(400).json({ error: `Setting value too long: ${key}` });
-      return;
-    }
-
-    // Frontend receives masked webhook text from GET; never persist that back.
-    if (key === 'discord_webhook' && looksMaskedWebhook(normalized)) {
-      continue;
-    }
-    if (key === 'discord_webhook' && !isWebhookLike(normalized)) {
-      res.status(400).json({ error: 'Invalid Discord webhook URL format' });
-      return;
-    }
-
-    setSetting(key, normalized);
+  const validated = validateSettingsUpdatePayload(req.body);
+  if (!validated.ok) {
+    badRequest(res, validated.error);
+    return;
   }
-  // Restart scheduler if cron changed
-  if ('check_cron' in body) {
+
+  for (const [key, value] of Object.entries(validated.value.values)) {
+    setSetting(key, value);
+  }
+
+  if (validated.value.shouldRestartScheduler) {
     restartScheduler();
   }
   res.json({ ok: true });
