@@ -36,3 +36,7 @@ jobs:
       - name: Build Web
         working-directory: ./web
         run: npx vite build
+
+      - name: Test Server (Coverage)
+        working-directory: ./server
+        run: npm run test:coverage
