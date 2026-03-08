@@ -252,6 +252,14 @@ describe('stacks routes', () => {
     const fallback = await request(buildApp()).get('/stacks/demo/logs?tail=abc');
     expect(fallback.status).toBe(200);
     expect(mocks.composeLogs).toHaveBeenCalledWith('demo', 100);
+
+    const negative = await request(buildApp()).get('/stacks/demo/logs?tail=-5');
+    expect(negative.status).toBe(200);
+    expect(mocks.composeLogs).toHaveBeenCalledWith('demo', 1);
+
+    const zero = await request(buildApp()).get('/stacks/demo/logs?tail=0');
+    expect(zero.status).toBe(200);
+    expect(mocks.composeLogs).toHaveBeenCalledWith('demo', 1);
   });
 
   it('returns stack images and handles image/log route errors', async () => {

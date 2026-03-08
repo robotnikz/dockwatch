@@ -53,7 +53,7 @@ Branch: `audit/performance-architecture-security-coverage`
   - functions: 85
 
 ## Next Audit Steps
-1. Expand coverage target to `routes/updates.ts` and `routes/stacks.ts` with phased thresholds.
-2. Add integration-level tests for cleanup and dashboard routes.
-3. Add benchmark baselines/threshold assertions for `perf:api` in CI (non-blocking first).
-4. Produce PR report with prioritized optimization and security backlog from collected evidence.
+1. Execute P0 hardening backlog from `docs/AUDIT_ACTION_PLAN.md` (input constraints, malformed query coverage).
+2. Add integration-style API mount and lifecycle tests (P1 reliability).
+3. Add `perf:api` baseline capture + optional workflow dispatch artifact (P1 performance).
+4. Open PR using audit report + prioritized backlog and track follow-up slices.
