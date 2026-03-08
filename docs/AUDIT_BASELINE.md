@@ -21,10 +21,15 @@ Branch: `audit/performance-architecture-security-coverage`
 - Added middleware unit tests for rate-limit window, rejection path, and reset behavior.
 - Added update-checker helper tests for image parsing, host allowlisting, and safe URL construction.
 - Added route-level tests for settings webhook flow (masked values, readonly keys, scheduler restart, error handling).
+- Hardened settings write-path input validation:
+  - rejects non-primitive values
+  - enforces maximum value length guard
+  - validates Discord webhook URL format before persistence
 - Added lightweight performance sanity script for hot-path pure functions.
 - Added API load sanity benchmark script (`perf:api`) using autocannon against running local server endpoints.
 - Added stack action streaming route tests (SSE success and error paths) for operational reliability.
 - Added scheduler decision-path tests for auto-update exclusion behavior.
+- Added updates route tests for cached retrieval, full check trigger, single-image check, and error paths.
 
 ## Coverage Scope (Phase 1)
 - Focused target: `server/src/services/resources.ts`
@@ -37,7 +42,7 @@ Branch: `audit/performance-architecture-security-coverage`
   - functions: 85
 
 ## Next Audit Steps
-1. Expand coverage target to additional security-sensitive modules.
-2. Add architectural guard tests around scheduler/update-check interactions.
-3. Add integration tests for stack action streaming endpoints.
-4. Introduce optional autocannon benchmark profile for API-level throughput.
+1. Expand coverage target to `routes/updates.ts` and `routes/stacks.ts` with phased thresholds.
+2. Add integration-level tests for cleanup and dashboard routes.
+3. Add benchmark baselines/threshold assertions for `perf:api` in CI (non-blocking first).
+4. Produce PR report with prioritized optimization and security backlog from collected evidence.

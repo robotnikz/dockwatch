@@ -28,10 +28,31 @@ const ALLOWED_KEYS = [
 ];
 
 const READONLY_UI_KEYS = new Set(['discord_webhook_set']);
+const MAX_SETTING_VALUE_LENGTH = 4096;
 
 function looksMaskedWebhook(value: string): boolean {
   const trimmed = String(value || '').trim();
   return trimmed.includes('...') && /^https?:\/\//i.test(trimmed);
+}
+
+function isPrimitiveSettingValue(value: unknown): value is string | number | boolean {
+  return typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean';
+}
+
+function isWebhookLike(value: string): boolean {
+  if (!value) return true;
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    const isAllowedHost =
+      host === 'discord.com' ||
+      host === 'discordapp.com' ||
+      host.endsWith('.discord.com') ||
+      host.endsWith('.discordapp.com');
+    return url.protocol === 'https:' && isAllowedHost && url.pathname.startsWith('/api/webhooks/');
+  } catch {
+    return false;
+  }
 }
 
 router.get('/', (_req: Request, res: Response) => {
@@ -46,7 +67,7 @@ router.get('/', (_req: Request, res: Response) => {
 });
 
 router.put('/', (req: Request, res: Response) => {
-  const body = req.body as Record<string, string>;
+  const body = req.body as Record<string, unknown>;
   for (const [key, value] of Object.entries(body)) {
     if (READONLY_UI_KEYS.has(key)) {
       continue;
@@ -55,11 +76,27 @@ router.put('/', (req: Request, res: Response) => {
       res.status(400).json({ error: `Unknown setting: ${key}` });
       return;
     }
+    if (!isPrimitiveSettingValue(value)) {
+      res.status(400).json({ error: `Invalid value type for setting: ${key}` });
+      return;
+    }
+
+    const normalized = String(value);
+    if (normalized.length > MAX_SETTING_VALUE_LENGTH) {
+      res.status(400).json({ error: `Setting value too long: ${key}` });
+      return;
+    }
+
     // Frontend receives masked webhook text from GET; never persist that back.
-    if (key === 'discord_webhook' && looksMaskedWebhook(String(value))) {
+    if (key === 'discord_webhook' && looksMaskedWebhook(normalized)) {
       continue;
     }
-    setSetting(key, value);
+    if (key === 'discord_webhook' && !isWebhookLike(normalized)) {
+      res.status(400).json({ error: 'Invalid Discord webhook URL format' });
+      return;
+    }
+
+    setSetting(key, normalized);
   }
   // Restart scheduler if cron changed
   if ('check_cron' in body) {

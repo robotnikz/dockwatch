@@ -93,6 +93,28 @@ describe('settings routes', () => {
     expect(res.body.error).toContain('Unknown setting: nope');
   });
 
+  it('rejects non-primitive setting values', async () => {
+    const res = await request(buildApp()).put('/settings').send({ check_cron: { bad: true } });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('Invalid value type for setting: check_cron');
+  });
+
+  it('rejects overly long values', async () => {
+    const longValue = 'x'.repeat(5000);
+    const res = await request(buildApp()).put('/settings').send({ update_exclusions: longValue });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('Setting value too long: update_exclusions');
+  });
+
+  it('rejects invalid webhook urls', async () => {
+    const res = await request(buildApp()).put('/settings').send({ discord_webhook: 'http://example.com/not-discord' });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('Invalid Discord webhook URL format');
+  });
+
   it('returns 400 when webhook test fails', async () => {
     mocks.testWebhook.mockResolvedValue(false);
 
