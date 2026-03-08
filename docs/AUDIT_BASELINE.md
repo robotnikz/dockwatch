@@ -32,6 +32,8 @@ Branch: `audit/performance-architecture-security-coverage`
 - Added scheduler decision-path tests for auto-update exclusion behavior.
 - Added updates route tests for cached retrieval, full check trigger, single-image check, and error paths.
 - Expanded stacks route tests for list/status derivation, non-stream action success/failure, logs/images, and detail/delete paths.
+- Added cleanup route tests for config updates, run/stream execution, preview/reset behavior, and error handling.
+- Added stats route tests for aggregate/containers/host endpoints and failure paths.
 
 ## Coverage Scope (Phase 1)
 - Focused target: `server/src/services/resources.ts`
@@ -39,6 +41,7 @@ Branch: `audit/performance-architecture-security-coverage`
 - Expanded target: `server/src/services/resources.ts`, `server/src/middleware/apiRateLimit.ts`, `server/src/routes/settings.ts`
 - Expanded target: `server/src/services/resources.ts`, `server/src/middleware/apiRateLimit.ts`, `server/src/routes/settings.ts`, `server/src/routes/updates.ts`
 - Expanded target: `server/src/services/resources.ts`, `server/src/middleware/apiRateLimit.ts`, `server/src/routes/settings.ts`, `server/src/routes/updates.ts`, `server/src/routes/stacks.ts`
+- Expanded target: `server/src/services/resources.ts`, `server/src/middleware/apiRateLimit.ts`, `server/src/routes/settings.ts`, `server/src/routes/updates.ts`, `server/src/routes/stacks.ts`, `server/src/routes/cleanup.ts`, `server/src/routes/stats.ts`
 - Thresholds (initial practical baseline):
   - lines: 70
   - statements: 70

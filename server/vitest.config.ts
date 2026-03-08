@@ -14,6 +14,8 @@ export default defineConfig({
         'src/routes/settings.ts',
         'src/routes/updates.ts',
         'src/routes/stacks.ts',
+        'src/routes/cleanup.ts',
+        'src/routes/stats.ts',
       ],
       all: true,
       thresholds: {
