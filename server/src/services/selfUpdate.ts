@@ -4,7 +4,9 @@ import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DEFAULT_UPDATE_DIR = path.resolve(__dirname, '../../..');
+const DEFAULT_UPDATE_DIR = '/opt/dockwatch';
+const DEV_FALLBACK_UPDATE_DIR = path.resolve(__dirname, '../../..');
+const STACKS_DIR = String(process.env.DOCKWATCH_STACKS || '/opt/stacks').trim() || '/opt/stacks';
 
 export interface SelfUpdateInfo {
   enabled: boolean;
@@ -14,9 +16,21 @@ export interface SelfUpdateInfo {
   reason?: string;
 }
 
-function resolveWorkingDir(): string {
+function getCandidateWorkingDirs(): string[] {
   const configured = String(process.env.DOCKWATCH_SELF_UPDATE_DIR || '').trim();
-  return configured || DEFAULT_UPDATE_DIR;
+  const candidates = [
+    configured,
+    DEFAULT_UPDATE_DIR,
+    DEV_FALLBACK_UPDATE_DIR,
+    path.join(STACKS_DIR, 'dockwatch'),
+    '/opt/stacks/dockwatch',
+  ].filter(Boolean);
+
+  const uniq = new Set<string>();
+  for (const candidate of candidates) {
+    uniq.add(path.resolve(candidate));
+  }
+  return [...uniq];
 }
 
 function resolveComposeFile(dir: string): string | null {
@@ -29,34 +43,46 @@ function resolveComposeFile(dir: string): string | null {
 
 export function getSelfUpdateInfo(): SelfUpdateInfo {
   const enabled = String(process.env.DOCKWATCH_SELF_UPDATE_ENABLED || 'true').trim().toLowerCase() !== 'false';
-  const workingDir = resolveWorkingDir();
+  const dirs = getCandidateWorkingDirs();
 
   if (!enabled) {
     return {
       enabled,
       supported: false,
-      workingDir,
+      workingDir: dirs[0] || DEFAULT_UPDATE_DIR,
       composeFile: null,
       reason: 'Self-update disabled by environment',
     };
   }
 
-  const composeFile = resolveComposeFile(workingDir);
-  if (!composeFile) {
+  for (const workingDir of dirs) {
+    const composeFile = resolveComposeFile(workingDir);
+    if (composeFile) {
+      return {
+        enabled,
+        supported: true,
+        workingDir,
+        composeFile,
+      };
+    }
+  }
+
+  if (dirs.length === 0) {
     return {
       enabled,
       supported: false,
-      workingDir,
+      workingDir: DEFAULT_UPDATE_DIR,
       composeFile: null,
-      reason: 'No compose file found in self-update directory',
+      reason: 'No self-update directories available',
     };
   }
 
   return {
     enabled,
-    supported: true,
-    workingDir,
-    composeFile,
+    supported: false,
+    workingDir: dirs[0],
+    composeFile: null,
+    reason: `No compose file found in candidates: ${dirs.join(', ')}`,
   };
 }
 

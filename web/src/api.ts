@@ -311,6 +311,7 @@ export interface AppVersionStatus {
   checkedAt: string;
   githubUrl: string;
   releaseUrl: string | null;
+  releaseNotes: string | null;
   checkFailed: boolean;
   selfUpdate?: {
     enabled: boolean;

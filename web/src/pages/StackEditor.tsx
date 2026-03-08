@@ -34,8 +34,7 @@ export default function StackEditor() {
   
   const [isEditing, setIsEditing] = useState(isNew);
   const [loading, setLoading] = useState(!isNew);
-  const [streamModal, setStreamModal] = useState({ show: false, logs: '', title: '' });
-  const streamEndRef = useRef<HTMLDivElement>(null);
+  const [streamTitle, setStreamTitle] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [logs, setLogs] = useState<string>('');
   const [error, setError] = useState('');
@@ -71,6 +70,8 @@ export default function StackEditor() {
 
   useEffect(() => {
     if (name) {
+      setLoading(true);
+      setIsEditing(false);
       setStackName(name);
       fetchStackInfo();
       fetchLogs();
@@ -84,6 +85,9 @@ export default function StackEditor() {
       }, 10000);
       return () => clearInterval(interval);
     } else {
+      setLoading(false);
+      setStackData(null);
+      setLogs('');
       const prefill = sessionStorage.getItem('dockwatch_prefill');
       if (prefill) {
         setContent(prefill);
@@ -125,40 +129,40 @@ export default function StackEditor() {
       update: 'Updating stack...'
     };
     
-    setStreamModal({ show: true, logs: '', title: titleMap[action] });
+    setStreamTitle(titleMap[action]);
+    setLogs('');
     
     try {
       await streamStackAction(name, action, (chunk) => {
-        setStreamModal(prev => ({ ...prev, logs: prev.logs + chunk }));
-        if (streamEndRef.current) {
-          streamEndRef.current.scrollIntoView({ behavior: 'smooth' });
-        }
+        setLogs(prev => prev + chunk);
       });
       await fetchStackInfo();
       await fetchLogs();
     } catch (err: any) {
-      setStreamModal(prev => ({ ...prev, logs: prev.logs + '\n[Error: ' + err.message + ']' }));
+      setLogs(prev => prev + '\n[Error: ' + err.message + ']');
       setError(err.message);
     } finally {
+      setStreamTitle(null);
       setActionLoading(null);
     }
   };
 
   const handleSave = async () => {
-    if (!stackName.trim()) {
+    const nextName = stackName.trim();
+    if (!nextName) {
       setError('Stack name is required');
       return;
     }
-    if (!/^[a-zA-Z0-9_-]+$/.test(stackName)) {
+    if (!/^[a-zA-Z0-9_-]+$/.test(nextName)) {
       setError('Stack name can only contain letters, numbers, dashes and underscores');
       return;
     }
     setActionLoading('save');
     setError('');
     try {
-      await saveStack(stackName, content, envContent);
+      await saveStack(nextName, content, envContent);
       if (isNew) {
-        navigate(`/stack/${stackName}`);
+        navigate(`/stack/${nextName}`);
       } else {
         setIsEditing(false);
         await fetchStackInfo();
@@ -182,35 +186,6 @@ export default function StackEditor() {
 
   return (
     <div className="space-y-6 max-w-[1400px] mx-auto">
-      {streamModal.show && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-[#0c0d12] w-full max-w-4xl p-6 rounded-[1.25rem] border border-dock-border shadow-2xl flex flex-col h-[80vh]">
-            <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-medium text-white flex items-center gap-3">
-                {actionLoading && <div className="h-4 w-4 rounded-full border-2 border-dock-accent border-t-transparent animate-spin"/>}
-                {streamModal.title}
-              </h2>
-            </div>
-            
-            <div className="flex-1 bg-black rounded-xl p-4 overflow-y-auto font-mono text-sm text-gray-300 relative border border-dock-border/50">
-              <div className="whitespace-pre-wrap break-words" dangerouslySetInnerHTML={{ __html: ansiUp.ansi_to_html(streamModal.logs || 'Connecting...') }}></div>
-              <div ref={streamEndRef} />
-            </div>
-            
-            {!actionLoading && (
-              <div className="mt-4 flex justify-end">
-                <button
-                  onClick={() => setStreamModal({ show: false, logs: '', title: '' })}
-                  className="bg-dock-panel hover:bg-dock-border text-white px-6 py-2 rounded-xl transition font-medium"
-                >
-                  Close
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* Header area */}
       <div className="flex flex-col gap-4">
         <div className="flex items-center gap-3">
@@ -236,7 +211,7 @@ export default function StackEditor() {
           {isEditing ? (
             <>
               <button onClick={handleSave} disabled={!!actionLoading} className="rounded-xl bg-dock-text px-4 py-2 text-sm font-bold text-dock-bg transition hover:bg-white disabled:opacity-50">
-                {actionLoading === 'save' ? 'Saving...' : 'Save'}
+                {actionLoading === 'save' ? (isNew ? 'Creating...' : 'Saving...') : (isNew ? 'Create Stack' : 'Save')}
               </button>
               {!isNew && (
                 <button onClick={() => setIsEditing(false)} disabled={!!actionLoading} className="rounded-xl bg-dock-panel px-4 py-2 text-sm font-bold text-white transition hover:bg-dock-border disabled:opacity-50">
@@ -309,7 +284,12 @@ export default function StackEditor() {
 
               <div className="flex-1 flex flex-col min-h-[300px]">
                 <div className="flex items-center justify-between mb-3">
-                    <h2 className="text-xl font-medium text-white tracking-tight">Terminal</h2>
+                    <div>
+                      <h2 className="text-xl font-medium text-white tracking-tight">Terminal</h2>
+                      {actionLoading && streamTitle ? (
+                        <p className="mt-1 text-xs text-dock-accent">{streamTitle}</p>
+                      ) : null}
+                    </div>
                     <button onClick={fetchLogs} className="text-xs text-dock-accent hover:underline">Refresh</button>
                 </div>
                 <div className="flex-1 rounded-[1.25rem] bg-[#0c0d12] p-4 border border-dock-border/50 overflow-hidden relative">

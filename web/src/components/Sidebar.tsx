@@ -49,10 +49,6 @@ export default function Sidebar() {
 
   const onUpdateBadgeClick = () => {
     if (!appVersion?.updateAvailable) return;
-    if (!selfUpdateSupported) {
-      window.open(appVersion.releaseUrl || appVersion.githubUrl, '_blank', 'noreferrer');
-      return;
-    }
     setUpdateError(null);
     setShowUpdateModal(true);
   };
@@ -158,7 +154,7 @@ export default function Sidebar() {
             <div className="mt-1 space-y-1">
               <div className="text-xs text-dock-muted">Latest: v{appVersion.latestVersion}</div>
               <div className="text-[11px] text-amber-300/90">
-                {selfUpdateSupported ? 'Click the update badge to start self-update.' : 'Click the update badge to open release notes.'}
+                Click the update badge to view release notes.
               </div>
             </div>
           ) : null}
@@ -195,9 +191,30 @@ export default function Sidebar() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 px-4">
           <div className="w-full max-w-md rounded-2xl border border-dock-border bg-dock-card p-5 shadow-dock">
             <h3 className="text-lg font-bold text-white">Update DockWatch</h3>
-            <p className="mt-2 text-sm text-dock-muted">
-              This will run <code>docker compose down && docker compose pull && docker compose up -d</code> in
-              <code className="ml-1">{appVersion?.selfUpdate?.workingDir || 'configured directory'}</code>.
+            <div className="mt-2 rounded-xl border border-dock-border/60 bg-dock-bg/30 p-3">
+              <div className="text-xs uppercase tracking-wide text-dock-muted">Release Notes</div>
+              <div className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap text-xs leading-5 text-dock-text">
+                {appVersion?.releaseNotes || 'No release notes provided for this version.'}
+              </div>
+              <a
+                href={appVersion?.releaseUrl || appVersion?.githubUrl || 'https://github.com/robotnikz/dockwatch'}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2 inline-block text-xs font-semibold text-dock-accent hover:underline"
+              >
+                Open full release page
+              </a>
+            </div>
+
+            <p className="mt-3 text-sm text-dock-muted">
+              {selfUpdateSupported
+                ? (
+                  <>
+                    This will run <code>docker compose down && docker compose pull && docker compose up -d</code> in
+                    <code className="ml-1">{appVersion?.selfUpdate?.workingDir || 'configured directory'}</code>.
+                  </>
+                )
+                : (appVersion?.selfUpdate?.reason || 'Self-update is not available in this environment.')}
             </p>
 
             {updateError ? (
@@ -219,13 +236,15 @@ export default function Sidebar() {
                 >
                   Cancel
                 </button>
-                <button
-                  type="button"
-                  onClick={startSelfUpdate}
-                  className="rounded-xl bg-dock-accent px-4 py-2 text-sm font-bold text-dock-bg hover:bg-dock-accent/90"
-                >
-                  Start Update
-                </button>
+                {selfUpdateSupported ? (
+                  <button
+                    type="button"
+                    onClick={startSelfUpdate}
+                    className="rounded-xl bg-dock-accent px-4 py-2 text-sm font-bold text-dock-bg hover:bg-dock-accent/90"
+                  >
+                    Update
+                  </button>
+                ) : null}
               </div>
             ) : (
               <div className="mt-4 flex items-center justify-end gap-2">

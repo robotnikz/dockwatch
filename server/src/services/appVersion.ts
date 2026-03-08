@@ -87,6 +87,7 @@ export interface AppVersionStatus {
   checkedAt: string;
   githubUrl: string;
   releaseUrl: string | null;
+  releaseNotes: string | null;
   checkFailed: boolean;
   selfUpdate?: {
     enabled: boolean;
@@ -113,7 +114,7 @@ function getGithubHeaders(): Record<string, string> {
   return headers;
 }
 
-async function fetchLatestReleaseVersion(): Promise<{ latestVersion: string; releaseUrl: string | null }> {
+async function fetchLatestReleaseVersion(): Promise<{ latestVersion: string; releaseUrl: string | null; releaseNotes: string | null }> {
   const headers = getGithubHeaders();
 
   const response = await fetch(RELEASE_API_URL, {
@@ -121,13 +122,13 @@ async function fetchLatestReleaseVersion(): Promise<{ latestVersion: string; rel
   });
 
   if (response.ok) {
-    const data = (await response.json()) as { tag_name?: string; html_url?: string };
+    const data = (await response.json()) as { tag_name?: string; html_url?: string; body?: string };
     const latest = extractSemverPrefix(data.tag_name || '');
     if (!latest) {
       throw new Error('GitHub release response did not include a semver tag_name');
     }
 
-    return { latestVersion: latest, releaseUrl: data.html_url || null };
+    return { latestVersion: latest, releaseUrl: data.html_url || null, releaseNotes: String(data.body || '').trim() || null };
   }
 
   // Fallback for repos without a proper latest release object: derive from tags.
@@ -155,6 +156,7 @@ async function fetchLatestReleaseVersion(): Promise<{ latestVersion: string; rel
   return {
     latestVersion,
     releaseUrl: `${GITHUB_URL}/releases/tag/v${latestVersion}`,
+    releaseNotes: null,
   };
 }
 
@@ -242,7 +244,7 @@ export async function getAppVersionStatus(force = false): Promise<AppVersionStat
   const currentRevision = (process.env.DOCKWATCH_REVISION || '').trim() || null;
 
   try {
-    const { latestVersion, releaseUrl } = await fetchLatestReleaseVersion();
+    const { latestVersion, releaseUrl, releaseNotes } = await fetchLatestReleaseVersion();
     let displayVersion = currentVersion;
 
     if (!isSemverLike(displayVersion) && currentRevision) {
@@ -271,6 +273,7 @@ export async function getAppVersionStatus(force = false): Promise<AppVersionStat
       checkedAt: new Date().toISOString(),
       githubUrl: GITHUB_URL,
       releaseUrl,
+      releaseNotes,
       checkFailed: false,
     };
     lastCheckMs = now;
@@ -284,6 +287,7 @@ export async function getAppVersionStatus(force = false): Promise<AppVersionStat
       checkedAt: new Date().toISOString(),
       githubUrl: GITHUB_URL,
       releaseUrl: cache?.releaseUrl || null,
+      releaseNotes: cache?.releaseNotes || null,
       checkFailed: true,
     };
     lastCheckMs = now;

@@ -32,7 +32,11 @@ router.get('/', async (_req: Request, res: Response) => {
         try {
           const psOutput = await composePs(name);
           services = psOutput.trim() ? JSON.parse(`[${psOutput.trim().split('\n').join(',')}]`) : [];
-          status = (services as { State: string }[]).every(s => s.State === 'running') ? 'running' : 'partial';
+          if ((services as unknown[]).length === 0) {
+            status = 'stopped';
+          } else {
+            status = (services as { State: string }[]).every(s => s.State === 'running') ? 'running' : 'partial';
+          }
         } catch {
           status = 'stopped';
         }
