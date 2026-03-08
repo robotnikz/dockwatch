@@ -53,7 +53,7 @@ function isTrueLabel(value: unknown): boolean {
   return String(value).trim().toLowerCase() === 'true';
 }
 
-function hasAutoUpdateEnabledServiceWithUpdates(
+export function hasAutoUpdateEnabledServiceWithUpdates(
   composeContent: string,
   updatedImages: Set<string>
 ): boolean {
