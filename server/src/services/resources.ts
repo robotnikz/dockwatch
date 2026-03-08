@@ -93,7 +93,11 @@ function getService(doc: any, serviceName: string): ComposeService {
     throw new Error(`Service "${serviceName}" not found in compose file`);
   }
 
-  return service;
+  // Work on a safe clone to avoid mutating tainted/plain objects from YAML parser.
+  const safeService = sanitizeParsedValue(service) as ComposeService;
+  (doc.services as Record<string, unknown>)[serviceName] = safeService;
+
+  return safeService;
 }
 
 function getResourcesFromDoc(doc: any, serviceName: string): ResourceConfig {
@@ -161,11 +165,11 @@ function setUpdateExcludedLabel(service: ComposeService, excluded: boolean): voi
 
   if (labels && typeof labels === 'object') {
     const source = labels as Record<string, unknown>;
-    const mapLabels = createSafeRecord<string>();
-    for (const [entryKey, entryValue] of Object.entries(source)) {
-      if (!isSafeKey(entryKey) || entryKey === key) continue;
-      mapLabels[entryKey] = String(entryValue);
-    }
+    const safeEntries = Object.entries(source)
+      .filter(([entryKey]) => isSafeKey(entryKey) && entryKey !== key)
+      .map(([entryKey, entryValue]) => [entryKey, String(entryValue)] as const);
+
+    const mapLabels = Object.fromEntries(safeEntries) as Record<string, string>;
     if (excluded) mapLabels[key] = 'true';
     if (Object.keys(mapLabels).length === 0) delete service.labels;
     else service.labels = mapLabels;
@@ -213,11 +217,11 @@ function setUpdateCheckExcludedLabel(service: ComposeService, excluded: boolean)
 
   if (labels && typeof labels === 'object') {
     const source = labels as Record<string, unknown>;
-    const mapLabels = createSafeRecord<string>();
-    for (const [entryKey, entryValue] of Object.entries(source)) {
-      if (!isSafeKey(entryKey) || entryKey === key) continue;
-      mapLabels[entryKey] = String(entryValue);
-    }
+    const safeEntries = Object.entries(source)
+      .filter(([entryKey]) => isSafeKey(entryKey) && entryKey !== key)
+      .map(([entryKey, entryValue]) => [entryKey, String(entryValue)] as const);
+
+    const mapLabels = Object.fromEntries(safeEntries) as Record<string, string>;
     if (excluded) mapLabels[key] = 'true';
     if (Object.keys(mapLabels).length === 0) delete service.labels;
     else service.labels = mapLabels;
