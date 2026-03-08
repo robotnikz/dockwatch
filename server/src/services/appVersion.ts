@@ -14,6 +14,7 @@ const RELEASE_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_R
 const TAGS_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/tags?per_page=30`;
 const COMPARE_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/compare`;
 const CHECK_TTL_MS = 60 * 60 * 1000; // 1 hour
+const TAG_PAGES_TO_SCAN = 10;
 
 function getCurrentVersion(): string {
   const envVersion = normalizeVersion(process.env.DOCKWATCH_VERSION || '');
@@ -156,30 +157,47 @@ interface SemverTag {
 }
 
 async function fetchSemverTags(): Promise<SemverTag[]> {
-  const response = await fetch(TAGS_API_URL, {
-    headers: getGithubHeaders(),
-  });
-  if (!response.ok) {
-    return [];
-  }
+  const headers = getGithubHeaders();
+  const results: SemverTag[] = [];
 
-  const tags = (await response.json()) as Array<{ name?: string; commit?: { sha?: string } }>;
-  return tags
-    .map((tag) => {
+  for (let page = 1; page <= TAG_PAGES_TO_SCAN; page += 1) {
+    const response = await fetch(`${TAGS_API_URL}&page=${page}`, {
+      headers,
+    });
+    if (!response.ok) {
+      break;
+    }
+
+    const tags = (await response.json()) as Array<{ name?: string; commit?: { sha?: string } }>;
+    if (!Array.isArray(tags) || tags.length === 0) {
+      break;
+    }
+
+    for (const tag of tags) {
       const version = extractSemverPrefix(tag.name || '');
       const commitSha = (tag.commit?.sha || '').trim();
-      if (!version || !commitSha) return null;
-      return { version, commitSha };
-    })
-    .filter((tag): tag is SemverTag => Boolean(tag));
+      if (!version || !commitSha) continue;
+      results.push({ version, commitSha });
+    }
+  }
+
+  return results;
 }
 
 async function resolveVersionFromRevision(currentRevision: string): Promise<string | null> {
   const tags = await fetchSemverTags();
   const current = currentRevision.trim().toLowerCase();
 
-  const hit = tags.find((tag) => tag.commitSha.toLowerCase() === current);
-  return hit?.version || null;
+  const matches = tags
+    .filter((tag) => tag.commitSha.toLowerCase() === current)
+    .map((tag) => tag.version);
+
+  if (matches.length === 0) {
+    return null;
+  }
+
+  matches.sort((a, b) => compareVersions(b, a));
+  return matches[0];
 }
 
 function isSemverLike(version: string): boolean {
