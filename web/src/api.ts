@@ -88,6 +88,7 @@ export interface HostInfo {
   architecture: string;
   cpus: number;
   memory_total: string;
+  memory_total_bytes: number;
 }
 
 export interface StatsResponse {

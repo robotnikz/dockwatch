@@ -128,7 +128,30 @@ export default function StatsPanel() {
   }
 
   const totalCpu = containers.reduce((s, c) => s + c.cpu_percent, 0);
-  const totalMem = containers.reduce((s, c) => s + c.mem_percent, 0);
+  const totalMemUsedBytes = containers.reduce((s, c) => {
+    const used = c.mem_usage || '0B';
+    const num = parseFloat(used);
+    if (!Number.isFinite(num)) return s;
+    if (used.includes('GiB')) return s + (num * 1024 * 1024 * 1024);
+    if (used.includes('MiB')) return s + (num * 1024 * 1024);
+    if (used.includes('KiB')) return s + (num * 1024);
+    return s + num;
+  }, 0);
+  const totalMem = host && host.memory_total_bytes > 0
+    ? (totalMemUsedBytes / host.memory_total_bytes) * 100
+    : 0;
+
+  const formatBytes = (bytes: number) => {
+    if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+    const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+    let value = bytes;
+    let idx = 0;
+    while (value >= 1024 && idx < units.length - 1) {
+      value /= 1024;
+      idx += 1;
+    }
+    return `${value >= 10 || idx === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[idx]}`;
+  };
 
   const sortedContainers = [...containers].sort((a, b) => {
     let valA: any = a[sortCol as keyof ContainerStats];
@@ -208,7 +231,7 @@ export default function StatsPanel() {
           <StatCard
             label="Memory Pressure"
             value={`${totalMem.toFixed(1)}%`}
-            sub={host.memory_total}
+            sub={`${formatBytes(totalMemUsedBytes)} / ${host.memory_total}`}
             accent={totalMem > 80 ? 'text-dock-red' : totalMem > 50 ? 'text-dock-yellow' : 'text-dock-green'}
           />
           <StatCard

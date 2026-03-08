@@ -49,6 +49,7 @@ export async function getHostInfo(): Promise<{
   architecture: string;
   cpus: number;
   memory_total: string;
+  memory_total_bytes: number;
 }> {
   const result = await execFileAsync('docker', [
     'info', '--format',
@@ -68,5 +69,6 @@ export async function getHostInfo(): Promise<{
     architecture: arch || 'unknown',
     cpus: parseInt(cpus || '0'),
     memory_total: memGB,
+    memory_total_bytes: memBytes,
   };
 }
