@@ -1,0 +1,395 @@
+import { useState, useEffect, useCallback } from 'react';
+import { getStats, getStacks, getStackResources, updateServiceResources, stackLogs, type ContainerStats, type HostInfo } from '../api';
+import LogModal from './LogModal';
+
+type ContainerUpdateMeta = {
+  stack: string;
+  service: string;
+  autoUpdateExcluded: boolean;
+  checkExcluded: boolean;
+};
+
+export default function StatsPanel() {
+  const [host, setHost] = useState<HostInfo | null>(null);
+  const [containers, setContainers] = useState<ContainerStats[]>([]);
+  const [sortCol, setSortCol] = useState<string>('cpu_percent');
+  const [sortDesc, setSortDesc] = useState<boolean>(true);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [updateMeta, setUpdateMeta] = useState<Record<string, ContainerUpdateMeta>>({});
+  const [toggling, setToggling] = useState<Record<string, boolean>>({});
+  
+  const [logModal, setLogModal] = useState<{ name: string; output: string } | null>(null);
+
+  const refresh = useCallback(async () => {
+    try {
+      const data = await getStats();
+      setHost(data.host);
+      setContainers(data.containers);
+      setError(null);
+      setLastUpdated(new Date().toLocaleTimeString());
+    } catch (err) {
+      console.error('Stats fetch failed:', err);
+      setError('Docker stats could not be loaded. Check Docker socket access for the DockWatch server.');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const refreshUpdateMeta = useCallback(async () => {
+    try {
+      const stacks = await getStacks();
+      const entries = await Promise.all(
+        stacks.map(async (stack) => {
+          try {
+            const resources = await getStackResources(stack.name);
+            return { stack, resources };
+          } catch {
+            return { stack, resources: {} as Record<string, { update_excluded?: boolean; update_check_excluded?: boolean }> };
+          }
+        })
+      );
+
+      const next: Record<string, ContainerUpdateMeta> = {};
+      for (const { stack, resources } of entries) {
+        for (const svc of stack.services) {
+          const containerName = String(svc.Name || '').replace(/^\//, '');
+          if (!containerName) continue;
+          next[containerName] = {
+            stack: stack.name,
+            service: svc.Service,
+            autoUpdateExcluded: Boolean(resources[svc.Service]?.update_excluded),
+            checkExcluded: Boolean(resources[svc.Service]?.update_check_excluded),
+          };
+        }
+      }
+      setUpdateMeta(next);
+    } catch {
+      // Non-critical metadata; table should still render stats if this fails.
+    }
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    refreshUpdateMeta();
+  }, [refresh, refreshUpdateMeta]);
+
+  // Live refresh every 5 seconds
+  useEffect(() => {
+    const id = setInterval(refresh, 5_000);
+    return () => clearInterval(id);
+  }, [refresh]);
+
+  useEffect(() => {
+    const id = setInterval(refreshUpdateMeta, 20_000);
+    return () => clearInterval(id);
+  }, [refreshUpdateMeta]);
+
+  const togglePolicy = async (containerName: string, policy: 'check' | 'auto') => {
+    const meta = updateMeta[containerName];
+    if (!meta) return;
+    const key = `${containerName}:${policy}`;
+    const nextMeta = {
+      ...meta,
+      checkExcluded: policy === 'check' ? !meta.checkExcluded : meta.checkExcluded,
+      autoUpdateExcluded: policy === 'auto' ? !meta.autoUpdateExcluded : meta.autoUpdateExcluded,
+    };
+
+    setToggling((prev) => ({ ...prev, [key]: true }));
+    setUpdateMeta((prev) => ({
+      ...prev,
+      [containerName]: nextMeta,
+    }));
+
+    try {
+      await updateServiceResources(meta.stack, meta.service, {
+        update_excluded: nextMeta.autoUpdateExcluded,
+        update_check_excluded: nextMeta.checkExcluded,
+      });
+    } catch {
+      // Roll back optimistic state on error.
+      setUpdateMeta((prev) => ({
+        ...prev,
+        [containerName]: meta,
+      }));
+    } finally {
+      setToggling((prev) => ({ ...prev, [key]: false }));
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="rounded-[28px] border border-dock-border/70 bg-dock-card/80 p-5 shadow-dock">
+        <div className="grid gap-4 md:grid-cols-4">
+          {[1, 2, 3, 4].map((index) => (
+            <div key={index} className="h-24 animate-pulse rounded-3xl bg-dock-panel/80" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  const totalCpuRaw = containers.reduce((s, c) => s + (c.cpu_percent || 0), 0);
+  const totalCpuNormalized = host && host.cpus > 0 ? totalCpuRaw / host.cpus : totalCpuRaw;
+
+  const totalMemUsedBytes = containers.reduce((s, c) => {
+    const used = c.mem_usage || '0B';
+    const num = parseFloat(used);
+    if (!Number.isFinite(num)) return s;
+    if (used.includes('GiB')) return s + (num * 1024 * 1024 * 1024);
+    if (used.includes('MiB')) return s + (num * 1024 * 1024);
+    if (used.includes('KiB')) return s + (num * 1024);
+    return s + num;
+  }, 0);
+  const totalMem = host && host.memory_total_bytes > 0
+    ? (totalMemUsedBytes / host.memory_total_bytes) * 100
+    : 0;
+
+  const formatBytes = (bytes: number) => {
+    if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+    const units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+    let value = bytes;
+    let idx = 0;
+    while (value >= 1024 && idx < units.length - 1) {
+      value /= 1024;
+      idx += 1;
+    }
+    return `${value >= 10 || idx === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[idx]}`;
+  };
+
+  const sortedContainers = [...containers].sort((a, b) => {
+    let valA: any = a[sortCol as keyof ContainerStats];
+    let valB: any = b[sortCol as keyof ContainerStats];
+
+    const parseMem = (str: string) => {
+      if (!str) return 0;
+      const num = parseFloat(str);
+      if (str.includes('GiB')) return num * 1024 * 1024 * 1024;
+      if (str.includes('MiB')) return num * 1024 * 1024;
+      if (str.includes('KiB')) return num * 1024;
+      if (str.includes('B')) return num;
+      return num;
+    };
+
+    if (sortCol === 'mem_usage') {
+      valA = parseMem(a.mem_usage);
+      valB = parseMem(b.mem_usage);
+    } else if (sortCol === 'net_io') {
+      valA = parseMem(a.net_io?.split(' / ')[0] || '0');
+      valB = parseMem(b.net_io?.split(' / ')[0] || '0');
+    } else if (sortCol === 'block_io') {
+      valA = parseMem(a.block_io?.split(' / ')[0] || '0');
+      valB = parseMem(b.block_io?.split(' / ')[0] || '0');
+    } else if (sortCol === 'name') {
+      valA = a.name.toLowerCase();
+      valB = b.name.toLowerCase();
+    }
+
+    if (valA < valB) return sortDesc ? 1 : -1;
+    if (valA > valB) return sortDesc ? -1 : 1;
+    return 0;
+  });
+
+  const handleSort = (col: string) => {
+    if (sortCol === col) {
+      setSortDesc(!sortDesc);
+    } else {
+      setSortCol(col);
+      setSortDesc(col !== 'name'); // default desc for metric numbers
+    }
+  };
+
+  const handleShowLogs = async (containerName: string) => {
+    const meta = updateMeta[containerName];
+    if (!meta) return;
+    try {
+      const { output } = await stackLogs(meta.stack, 200, meta.service);
+      setLogModal({ name: `${meta.stack} / ${meta.service}`, output });
+    } catch (err) {
+      console.error('Failed to load logs:', err);
+    }
+  };
+
+  const SortIcon = ({ col }: { col: string }) => {
+    if (sortCol !== col) return <span className="opacity-0 group-hover:opacity-40 inline-block w-4 text-center">↕</span>;
+    return <span className="inline-block w-4 text-center text-dock-accent">{sortDesc ? '↓' : '↑'}</span>;
+  };
+
+  const topConsumers = [...containers].sort((a, b) => b.cpu_percent - a.cpu_percent).slice(0, 3).map((c) => c.name).join(', ');
+
+  return (
+    <section className="space-y-4 rounded-[28px] border border-dock-border/70 bg-dock-card/80 p-5 shadow-dock lg:p-6">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="text-[11px] uppercase tracking-[0.28em] text-dock-muted">Live Runtime</p>
+          <h3 className="mt-1 text-2xl font-bold tracking-tight text-white">Docker host telemetry</h3>
+        </div>
+        <div className="text-sm text-dock-muted">
+          {error ? error : `Last refresh ${lastUpdated ?? 'just now'}`}
+        </div>
+      </div>
+
+      {host && (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <StatCard
+            label="Containers"
+            value={`${host.stack_containers_running ?? host.containers_running} / ${host.stack_containers_total ?? host.containers_total}`}
+            sub={`${containers.length} reporting live stats`}
+            accent="text-dock-green"
+          />
+          <StatCard
+            label="CPU Load"
+            value={`${totalCpuNormalized.toFixed(1)}%`}
+            sub={`${host.cpus} cores available (${totalCpuRaw.toFixed(0)}% raw)`}
+            accent={totalCpuNormalized > 80 ? 'text-dock-red' : totalCpuNormalized > 50 ? 'text-dock-yellow' : 'text-dock-green'}
+          />
+          <StatCard
+            label="Memory Pressure"
+            value={`${totalMem.toFixed(1)}%`}
+            sub={`${formatBytes(totalMemUsedBytes)} / ${host.memory_total}`}
+            accent={totalMem > 80 ? 'text-dock-red' : totalMem > 50 ? 'text-dock-yellow' : 'text-dock-green'}
+          />
+          <StatCard
+            label="Docker"
+            value={`v${host.server_version}`}
+            sub={`${host.os} (${host.architecture})`}
+            accent="text-dock-accent"
+          />
+        </div>
+      )}
+
+      <div className="rounded-[24px] border border-dock-border/70 bg-dock-panel/55 overflow-hidden">
+        <div className="flex flex-col gap-2 border-b border-dock-border/70 px-4 py-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h4 className="text-sm font-semibold uppercase tracking-[0.22em] text-dock-muted">Container Stats</h4>
+            <p className="mt-1 text-sm text-white">
+              {sortedContainers.length > 0 ? `Top consumers: ${topConsumers || 'n/a'}` : 'No active containers reported.'}
+            </p>
+          </div>
+        </div>
+
+        {sortedContainers.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-dock-border/70 text-dock-muted">
+                  <th className="px-4 py-3 text-left font-medium cursor-pointer group hover:text-dock-accent transition select-none" onClick={() => handleSort('name')}>Container <SortIcon col="name"/></th>
+                  <th className="px-4 py-3 text-right font-medium cursor-pointer group hover:text-dock-accent transition select-none" onClick={() => handleSort('cpu_percent')}><SortIcon col="cpu_percent"/> CPU</th>
+                  <th className="px-4 py-3 text-right font-medium cursor-pointer group hover:text-dock-accent transition select-none" onClick={() => handleSort('mem_usage')}><SortIcon col="mem_usage"/> Memory</th>
+                  <th className="hidden px-4 py-3 text-right font-medium md:table-cell">Status</th>
+                  <th className="hidden px-4 py-3 text-right font-medium md:table-cell cursor-pointer group hover:text-dock-accent transition select-none" onClick={() => handleSort('mem_percent')}><SortIcon col="mem_percent"/> Mem %</th>
+                  <th className="hidden px-4 py-3 text-right font-medium lg:table-cell cursor-pointer group hover:text-dock-accent transition select-none" onClick={() => handleSort('net_io')}><SortIcon col="net_io"/> Net I/O</th>
+                  <th className="hidden px-4 py-3 text-right font-medium lg:table-cell cursor-pointer group hover:text-dock-accent transition select-none" onClick={() => handleSort('block_io')}><SortIcon col="block_io"/> Block I/O</th>
+                  <th className="px-4 py-3 text-right font-medium">Check</th>
+                  <th className="px-4 py-3 text-right font-medium">Update</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedContainers.map((container) => (
+                  <tr key={container.id} className="border-b border-dock-border/40 transition hover:bg-dock-bg/18">
+                    <td className="max-w-[240px] truncate px-4 py-3 text-sm font-semibold text-white">
+                      <div className="flex items-center gap-2">
+                        {container.health === 'healthy' && <span className="text-dock-green" title="Healthy">●</span>}
+                        {container.health === 'unhealthy' && <span className="text-dock-red" title="Unhealthy">●</span>}
+                        {container.health === 'starting' && <span className="text-dock-yellow animate-pulse" title="Starting">●</span>}
+                        
+                        <button 
+                          onClick={() => handleShowLogs(container.name)}
+                          className="hover:text-dock-accent hover:underline text-left truncate"
+                          title="Click to view logs"
+                        >
+                          {container.name}
+                        </button>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className={container.cpu_percent > 80 ? 'text-dock-red' : container.cpu_percent > 50 ? 'text-dock-yellow' : 'text-dock-text'}>
+                        {container.cpu_percent.toFixed(1)}%
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right text-dock-text">
+                      {container.mem_usage} / {container.mem_limit}
+                    </td>
+                    <td className="hidden px-4 py-3 text-right md:table-cell text-dock-muted">
+                        {container.status}
+                    </td>
+                    <td className="hidden px-4 py-3 text-right md:table-cell">
+                      <div className="flex items-center justify-end gap-2">
+                        <div className="h-1.5 w-16 overflow-hidden rounded-full bg-dock-border/60">
+                          <div
+                            className={`h-full rounded-full ${container.mem_percent > 80 ? 'bg-dock-red' : container.mem_percent > 50 ? 'bg-dock-yellow' : 'bg-dock-green'}`}
+                            style={{ width: `${Math.min(container.mem_percent, 100)}%` }}
+                          />
+                        </div>
+                        <span className="w-10 text-right text-dock-muted">{container.mem_percent.toFixed(1)}%</span>
+                      </div>
+                    </td>
+                    <td className="hidden px-4 py-3 text-right text-dock-muted lg:table-cell">{container.net_io}</td>
+                    <td className="hidden px-4 py-3 text-right text-dock-muted lg:table-cell">{container.block_io}</td>
+                    <td className="px-4 py-3 text-right">
+                      {updateMeta[container.name] ? (
+                        <button
+                          type="button"
+                          onClick={() => togglePolicy(container.name, 'check')}
+                          disabled={Boolean(toggling[`${container.name}:check`])}
+                          className="inline-flex items-center justify-end disabled:opacity-60"
+                          title={updateMeta[container.name].checkExcluded ? 'Container is excluded from update checks' : 'Container is included in update checks'}
+                        >
+                          <span className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${updateMeta[container.name].checkExcluded ? 'bg-dock-border/70' : 'bg-dock-accent/80'}`}>
+                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${updateMeta[container.name].checkExcluded ? 'translate-x-1' : 'translate-x-6'}`} />
+                          </span>
+                        </button>
+                      ) : (
+                        <span className="text-dock-muted/70">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      {updateMeta[container.name] ? (
+                        <button
+                          type="button"
+                          onClick={() => togglePolicy(container.name, 'auto')}
+                          disabled={Boolean(toggling[`${container.name}:auto`])}
+                          className="inline-flex items-center justify-end disabled:opacity-60"
+                          title={updateMeta[container.name].autoUpdateExcluded ? 'Container is excluded from automatic update runs' : 'Container is included in automatic update runs'}
+                        >
+                          <span className={`relative inline-flex h-6 w-11 items-center rounded-full transition ${updateMeta[container.name].autoUpdateExcluded ? 'bg-dock-border/70' : 'bg-dock-accent/80'}`}>
+                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${updateMeta[container.name].autoUpdateExcluded ? 'translate-x-1' : 'translate-x-6'}`} />
+                          </span>
+                        </button>
+                      ) : (
+                        <span className="text-dock-muted/70">-</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="px-4 py-10 text-center text-sm text-dock-muted">
+            No running containers reported by Docker at the moment.
+          </div>
+        )}
+
+        {logModal && (
+          <LogModal
+            name={logModal.name}
+            output={logModal.output}
+            onClose={() => setLogModal(null)}
+          />
+        )}
+      </div>
+    </section>
+  );
+}
+
+function StatCard({ label, value, sub, accent }: { label: string; value: string; sub: string; accent: string }) {
+  return (
+    <div className="rounded-3xl border border-dock-border/70 bg-dock-bg/26 p-4">
+      <p className="text-[11px] uppercase tracking-[0.22em] text-dock-muted">{label}</p>
+      <p className={`mt-3 text-3xl font-bold tracking-tight ${accent}`}>{value}</p>
+      <p className="mt-1 text-sm text-dock-muted">{sub}</p>
+    </div>
+  );
+}

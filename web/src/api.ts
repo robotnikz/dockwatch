@@ -1,0 +1,439 @@
+const BASE = '/api';
+
+async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const res = await fetch(`${BASE}${path}`, {
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    ...options,
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    const err: any = new Error(data.error || `HTTP ${res.status}`);
+    err.status = res.status;
+    if (res.status === 401) {
+      window.dispatchEvent(new CustomEvent('dockwatch:auth-required'));
+    }
+    throw err;
+  }
+  return data as T;
+}
+
+// ---- Auth ----
+export interface AuthMe {
+  enabled: boolean;
+  configured: boolean;
+  authenticated: boolean;
+  username: string | null;
+}
+
+export const getAuthMe = () => request<AuthMe>('/auth/me');
+export const setupAuth = (username: string, password: string) =>
+  request<{ ok: boolean; me: AuthMe }>('/auth/setup', {
+    method: 'POST',
+    body: JSON.stringify({ username, password }),
+  });
+export const loginAuth = (username: string, password: string) =>
+  request<{ ok: boolean; me: AuthMe }>('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ username, password }),
+  });
+export const logoutAuth = () => request<{ ok: boolean }>('/auth/logout', { method: 'POST' });
+export const changePasswordAuth = (currentPassword: string, newPassword: string) =>
+  request<{ ok: boolean; me: AuthMe }>('/auth/change-password', {
+    method: 'POST',
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+
+// ---- Stacks ----
+export interface StackService {
+  Name: string;
+  Service: string;
+  State: string;
+  Status: string;
+}
+
+export interface Stack {
+  name: string;
+  status: 'running' | 'partial' | 'stopped' | 'unknown';
+  services: StackService[];
+}
+
+export interface StackDetail {
+  name: string;
+  content: string;
+  envContent?: string;
+}
+
+export const getStacks = () => request<Stack[]>('/stacks');
+export const getStack = (name: string) => request<StackDetail>(`/stacks/${name}`);
+export const saveStack = (name: string, content: string, envContent?: string) =>
+  request<{ ok: boolean }>(`/stacks/${name}`, { method: 'PUT', body: JSON.stringify({ content, envContent }) });
+export const deleteStack = (name: string) =>
+  request<{ ok: boolean }>(`/stacks/${name}`, { method: 'DELETE' });
+
+export const stackUp = (name: string) =>
+  request<{ ok: boolean; output: string }>(`/stacks/${name}/up`, { method: 'POST' });
+export const stackDown = (name: string) =>
+  request<{ ok: boolean; output: string }>(`/stacks/${name}/down`, { method: 'POST' });
+export const stackRestart = (name: string) =>
+  request<{ ok: boolean; output: string }>(`/stacks/${name}/restart`, { method: 'POST' });
+export const stackUpdate = (name: string) =>
+  request<{ ok: boolean; output: string }>(`/stacks/${name}/update`, { method: 'POST' });
+export const stackLogs = (name: string, tail = 100, container?: string) => {
+  const query = new URLSearchParams({ tail: String(tail) });
+  if (container) query.set('container', container);
+  return request<{ output: string }>(`/stacks/${name}/logs?${query.toString()}`);
+};
+
+// ---- Updates ----
+export interface UpdateStatus {
+  image: string;
+  localDigest: string | null;
+  remoteDigest: string | null;
+  checked_at: string;
+  updateAvailable: boolean;
+  context?: string;
+}
+
+export const getUpdates = () => request<UpdateStatus[]>('/updates');
+export const triggerCheck = () => request<UpdateStatus[]>('/updates/check', { method: 'POST' });
+
+// ---- Settings ----
+export const getSettings = () => request<Record<string, string>>('/settings');
+export const saveSettings = (data: Record<string, string>) =>
+  request<{ ok: boolean }>('/settings', { method: 'PUT', body: JSON.stringify(data) });
+export const testWebhook = () => request<{ ok: boolean }>('/settings/test-webhook', { method: 'POST' });
+export interface SchedulerEvent {
+  id: number;
+  category: string;
+  scope: string | null;
+  level: string;
+  message: string;
+  created_at: string;
+}
+export const getSchedulerEvents = (limit = 20) =>
+  request<{ events: SchedulerEvent[] }>(`/settings/scheduler-events?limit=${encodeURIComponent(String(limit))}`);
+export const resetSchedulerEvents = () => request<{ ok: boolean }>('/settings/scheduler-events/reset', { method: 'POST' });
+
+// ---- Stats ----
+export interface ContainerStats {
+  id: string;
+  name: string;
+  cpu_percent: number;
+  mem_usage: string;
+  mem_limit: string;
+  mem_percent: number;
+  net_io: string;
+  block_io: string;
+  pids: number;
+  status?: string;
+  health?: string;
+}
+
+export interface HostInfo {
+  containers_running: number;
+  containers_total: number;
+  stack_containers_running: number;
+  stack_containers_total: number;
+  images: number;
+  server_version: string;
+  os: string;
+  architecture: string;
+  cpus: number;
+  memory_total: string;
+  memory_total_bytes: number;
+}
+
+export interface StatsResponse {
+  host: HostInfo;
+  containers: ContainerStats[];
+}
+
+export const getStats = () => request<StatsResponse>('/stats');
+
+// ---- Cleanup ----
+export interface CleanupConfig {
+  scheduleEnabled: boolean;
+  scheduleFrequency: 'daily' | 'weekly' | 'monthly';
+  scheduleTime: string;
+  protectionEnabled: boolean;
+  protectedImageLabels: string[];
+  protectedVolumeLabels: string[];
+  options: {
+    containers: boolean;
+    images: boolean;
+    networks: boolean;
+    volumes: boolean;
+    buildCache: boolean;
+  };
+}
+
+export interface CleanupPreview {
+  containers: { total: number; reclaimable: string };
+  images: { total: number; reclaimable: string };
+  volumes: { total: number; reclaimable: string };
+  buildCache: { total: number; reclaimable: string };
+}
+
+export interface CleanupRunResult {
+  reason: 'manual' | 'scheduled';
+  dryRun: boolean;
+  startedAt: string;
+  finishedAt: string;
+  reclaimedBytes: number;
+  reclaimedHuman: string;
+  deleted: {
+    containers: number;
+    images: number;
+    networks: number;
+    volumes: number;
+    buildCache: number;
+  };
+  outputs: string[];
+  success: boolean;
+  error?: string;
+}
+
+export interface CleanupDashboard {
+  config: CleanupConfig;
+  preview: CleanupPreview | null;
+  stats: {
+    totalReclaimedBytes: number;
+    totalReclaimedHuman: string;
+    pruneRuns: number;
+    failedRuns: number;
+    deleted: {
+      containers: number;
+      images: number;
+      networks: number;
+      volumes: number;
+      buildCache: number;
+    };
+    firstRunAt: string | null;
+    lastRunAt: string | null;
+    latestRun: CleanupRunResult | null;
+  };
+}
+
+export const getCleanupDashboard = () => request<CleanupDashboard>('/cleanup');
+export const getCleanupPreview = () => request<CleanupPreview>('/cleanup/preview');
+export const saveCleanupConfig = (config: Partial<CleanupConfig>) =>
+  request<{ ok: boolean; config: CleanupConfig }>('/cleanup/config', {
+    method: 'PUT',
+    body: JSON.stringify(config),
+  });
+export const runCleanup = (options?: CleanupConfig['options']) =>
+  request<{ ok: boolean; result: CleanupRunResult }>('/cleanup/run', {
+    method: 'POST',
+    body: JSON.stringify({ options }),
+  });
+
+export const resetCleanupStatistics = () =>
+  request<{ ok: boolean }>('/cleanup/reset', {
+    method: 'POST',
+  });
+
+export async function streamCleanupRun(
+  args: { options?: CleanupConfig['options']; dryRun?: boolean },
+  onLog: (text: string) => void,
+): Promise<CleanupRunResult> {
+  const query = new URLSearchParams({ stream: 'true' });
+  if (args.dryRun) query.set('dryRun', 'true');
+
+  const res = await fetch(`${BASE}/cleanup/run?${query.toString()}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ options: args.options, dryRun: args.dryRun }),
+  });
+
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error('Streaming not supported by browser');
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (value) {
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        const payload = line.slice(6).trim();
+        if (!payload) continue;
+        const parsed = JSON.parse(payload) as {
+          chunk?: string;
+          error?: string;
+          finish?: boolean;
+          result?: CleanupRunResult;
+        };
+        if (parsed.error) throw new Error(parsed.error);
+        if (parsed.chunk) {
+          onLog(String(parsed.chunk).replace(/\r\n/g, '\n').replace(/\r/g, '\n'));
+        }
+        if (parsed.finish && parsed.result) {
+          return parsed.result;
+        }
+      }
+    }
+    if (done) break;
+  }
+
+  throw new Error('Cleanup stream ended without final result');
+}
+
+// ---- Converter ----
+export const convertDockerRun = (command: string) =>
+  request<{ compose: string }>('/convert', { method: 'POST', body: JSON.stringify({ command }) });
+
+// ---- Resources ----
+export interface ResourceConfig {
+  limits_cpus?: string;
+  limits_memory?: string;
+  reservations_cpus?: string;
+  reservations_memory?: string;
+  update_excluded?: boolean;
+  update_check_excluded?: boolean;
+}
+
+export const getStackResources = (name: string) =>
+  request<Record<string, ResourceConfig>>(`/resources/${name}`);
+export const updateServiceResources = (stackName: string, serviceName: string, config: ResourceConfig) =>
+  request<{ ok: boolean; content: string; needsRestart: boolean }>(`/resources/${stackName}/${serviceName}`, {
+    method: 'PUT', body: JSON.stringify(config),
+  });
+
+export async function streamStackAction(
+  name: string,
+  action: 'up' | 'down' | 'restart' | 'update',
+  onLog: (text: string) => void
+): Promise<void> {
+  const res = await fetch(`${BASE}/stacks/${name}/${action}?stream=true`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error('Streaming not supported by browser');
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (value) {
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const dataStr = line.substring(6);
+          if (dataStr.trim()) {
+            try {
+              const parsed = JSON.parse(dataStr);
+              if (parsed.error) throw new Error(parsed.error);
+              if (parsed.chunk) {
+                // Compose output often uses carriage-return progress updates.
+                // Convert to clean newlines so the web terminal stays readable.
+                const normalized = String(parsed.chunk)
+                  .replace(/\r\n/g, '\n')
+                  .replace(/\r/g, '\n')
+                  .replace(/[\x00-\x08\x0b\x0c\x0e-\x1a\x1c-\x1f\x7f]/g, '');
+                onLog(normalized);
+              }
+              if (parsed.finish) return;
+            } catch (err: any) {
+              // Ignore partial JSON parse errors for safety if we split chunks wrong.
+              if (err.name === 'SyntaxError') continue;
+              throw err;
+            }
+          }
+        }
+      }
+    }
+    if (done) break;
+  }
+}
+
+export async function streamStackServiceUpdate(
+  name: string,
+  service: string,
+  onLog: (text: string) => void,
+): Promise<void> {
+  const encodedService = encodeURIComponent(service);
+  const res = await fetch(`${BASE}/stacks/${name}/update/${encodedService}?stream=true`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error('Streaming not supported by browser');
+
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (value) {
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const dataStr = line.substring(6);
+          if (dataStr.trim()) {
+            try {
+              const parsed = JSON.parse(dataStr);
+              if (parsed.error) throw new Error(parsed.error);
+              if (parsed.chunk) {
+                const normalized = String(parsed.chunk)
+                  .replace(/\r\n/g, '\n')
+                  .replace(/\r/g, '\n')
+                  .replace(/[\x00-\x08\x0b\x0c\x0e-\x1a\x1c-\x1f\x7f]/g, '');
+                onLog(normalized);
+              }
+              if (parsed.finish) return;
+            } catch (err: any) {
+              if (err.name === 'SyntaxError') continue;
+              throw err;
+            }
+          }
+        }
+      }
+    }
+    if (done) break;
+  }
+}
+
+// ---- Meta ----
+export interface AppVersionStatus {
+  currentVersion: string;
+  currentRevision: string | null;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+  checkedAt: string;
+  githubUrl: string;
+  releaseUrl: string | null;
+  releaseNotes: string | null;
+  checkFailed: boolean;
+  selfUpdate?: {
+    enabled: boolean;
+    supported: boolean;
+    workingDir: string;
+    composeFile: string | null;
+    reason?: string;
+  };
+}
+
+export const getAppVersionStatus = (force = false) =>
+  request<AppVersionStatus>(`/meta/version${force ? '?force=true' : ''}`);
+
+export const triggerSelfUpdate = () =>
+  request<{ accepted: boolean; reloadAfterSeconds: number }>('/meta/self-update', { method: 'POST' });

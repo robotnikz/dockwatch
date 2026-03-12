@@ -1,0 +1,382 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
+import { execSync } from 'node:child_process';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const serverPackagePath = path.resolve(__dirname, '../../package.json');
+const repoRootPath = path.resolve(__dirname, '../../..');
+
+const GITHUB_OWNER = process.env.DOCKWATCH_GITHUB_OWNER || 'robotnikz';
+const GITHUB_REPO = process.env.DOCKWATCH_GITHUB_REPO || 'dockwatch';
+const GITHUB_DEFAULT_BRANCH = process.env.DOCKWATCH_GITHUB_DEFAULT_BRANCH || 'main';
+const GITHUB_URL = `https://github.com/${GITHUB_OWNER}/${GITHUB_REPO}`;
+const RELEASE_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/releases/latest`;
+const TAGS_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/tags?per_page=30`;
+const COMPARE_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/compare`;
+const COMMITS_API_URL = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/commits`;
+const CHECK_TTL_MS = 60 * 60 * 1000; // 1 hour
+const TAG_PAGES_TO_SCAN = 10;
+
+function getCurrentVersion(): string {
+  const envVersion = normalizeVersion(process.env.DOCKWATCH_VERSION || '');
+  if (envVersion) {
+    return envVersion;
+  }
+
+  try {
+    const described = execSync('git describe --tags --always', {
+      cwd: repoRootPath,
+      stdio: ['ignore', 'pipe', 'ignore'],
+      encoding: 'utf8',
+    }).trim();
+    const coreMatch = normalizeVersion(described).match(/^\d+\.\d+\.\d+/);
+    const normalized = coreMatch?.[0] || extractSemverPrefix(described) || normalizeVersion(described);
+    if (normalized) {
+      return normalized;
+    }
+  } catch {
+    // Ignore and continue with package fallback.
+  }
+
+  try {
+    const raw = readFileSync(serverPackagePath, 'utf8');
+    const pkg = JSON.parse(raw) as { version?: string };
+    return normalizeVersion(pkg.version || '') || '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
+function normalizeVersion(version: string): string {
+  return version.trim().replace(/^v/i, '').replace(/\+.*$/, '');
+}
+
+function normalizeRevision(value: string | null | undefined): string | null {
+  const revision = String(value || '').trim();
+  if (!revision) return null;
+  if (!/^[0-9a-f]{7,40}$/i.test(revision)) return null;
+  return revision.toLowerCase();
+}
+
+function extractRevisionFromVersion(version: string): string | null {
+  const normalized = normalizeVersion(version);
+  const match = normalized.match(/(?:^|[-_])([0-9a-f]{7,40})$/i);
+  return normalizeRevision(match?.[1] || '');
+}
+
+function resolveCurrentRevision(currentVersion: string): string | null {
+  const envRevision = normalizeRevision(process.env.DOCKWATCH_REVISION);
+  if (envRevision) {
+    return envRevision;
+  }
+
+  const versionRevision = extractRevisionFromVersion(process.env.DOCKWATCH_VERSION || currentVersion);
+  if (versionRevision) {
+    return versionRevision;
+  }
+
+  try {
+    const gitRevision = execSync('git rev-parse HEAD', {
+      cwd: repoRootPath,
+      stdio: ['ignore', 'pipe', 'ignore'],
+      encoding: 'utf8',
+    }).trim();
+    return normalizeRevision(gitRevision);
+  } catch {
+    return null;
+  }
+}
+
+function extractSemverPrefix(value: string): string | null {
+  const normalized = normalizeVersion(value);
+  const match = normalized.match(/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?/);
+  return match ? match[0] : null;
+}
+
+// Lightweight semver comparison for stable x.y.z(-prerelease) strings.
+function compareVersions(a: string, b: string): number {
+  const [aCore, aPre] = normalizeVersion(a).split('-', 2);
+  const [bCore, bPre] = normalizeVersion(b).split('-', 2);
+
+  const aParts = aCore.split('.').map((p) => parseInt(p, 10) || 0);
+  const bParts = bCore.split('.').map((p) => parseInt(p, 10) || 0);
+  const maxLen = Math.max(aParts.length, bParts.length, 3);
+
+  for (let i = 0; i < maxLen; i += 1) {
+    const left = aParts[i] ?? 0;
+    const right = bParts[i] ?? 0;
+    if (left > right) return 1;
+    if (left < right) return -1;
+  }
+
+  if (!aPre && bPre) return 1;
+  if (aPre && !bPre) return -1;
+  if (!aPre && !bPre) return 0;
+
+  return String(aPre).localeCompare(String(bPre));
+}
+
+export interface AppVersionStatus {
+  currentVersion: string;
+  currentRevision: string | null;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+  checkedAt: string;
+  githubUrl: string;
+  releaseUrl: string | null;
+  releaseNotes: string | null;
+  checkFailed: boolean;
+  selfUpdate?: {
+    enabled: boolean;
+    supported: boolean;
+    workingDir: string;
+    composeFile: string | null;
+    reason?: string;
+  };
+}
+
+let cache: AppVersionStatus | null = null;
+let lastCheckMs = 0;
+
+function getGithubHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    Accept: 'application/vnd.github+json',
+    'User-Agent': 'dockwatch',
+  };
+
+  if (process.env.GITHUB_TOKEN) {
+    headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  }
+
+  return headers;
+}
+
+async function fetchLatestReleaseVersion(): Promise<{ latestVersion: string; releaseUrl: string | null; releaseNotes: string | null }> {
+  const headers = getGithubHeaders();
+
+  const response = await fetch(RELEASE_API_URL, {
+    headers,
+  });
+
+  if (response.ok) {
+    const data = (await response.json()) as { tag_name?: string; html_url?: string; body?: string };
+    const latest = extractSemverPrefix(data.tag_name || '');
+    if (!latest) {
+      throw new Error('GitHub release response did not include a semver tag_name');
+    }
+
+    return { latestVersion: latest, releaseUrl: data.html_url || null, releaseNotes: String(data.body || '').trim() || null };
+  }
+
+  // Fallback for repos without a proper latest release object: derive from tags.
+  const tagsResponse = await fetch(TAGS_API_URL, {
+    headers: {
+      ...headers,
+    },
+  });
+
+  if (!tagsResponse.ok) {
+    throw new Error(`GitHub release lookup failed (${response.status}) and tags lookup failed (${tagsResponse.status})`);
+  }
+
+  const tags = (await tagsResponse.json()) as Array<{ name?: string }>;
+  const semverTags = tags
+    .map((t) => extractSemverPrefix(t.name || ''))
+    .filter((v): v is string => Boolean(v));
+
+  if (semverTags.length === 0) {
+    throw new Error('GitHub tags response did not include semver tags');
+  }
+
+  semverTags.sort((a, b) => compareVersions(b, a));
+  const latestVersion = semverTags[0];
+  return {
+    latestVersion,
+    releaseUrl: `${GITHUB_URL}/releases/tag/v${latestVersion}`,
+    releaseNotes: null,
+  };
+}
+
+interface SemverTag {
+  version: string;
+  commitSha: string;
+}
+
+async function fetchSemverTags(): Promise<SemverTag[]> {
+  const headers = getGithubHeaders();
+  const results: SemverTag[] = [];
+
+  for (let page = 1; page <= TAG_PAGES_TO_SCAN; page += 1) {
+    const response = await fetch(`${TAGS_API_URL}&page=${page}`, {
+      headers,
+    });
+    if (!response.ok) {
+      break;
+    }
+
+    const tags = (await response.json()) as Array<{ name?: string; commit?: { sha?: string } }>;
+    if (!Array.isArray(tags) || tags.length === 0) {
+      break;
+    }
+
+    for (const tag of tags) {
+      const version = extractSemverPrefix(tag.name || '');
+      const commitSha = (tag.commit?.sha || '').trim();
+      if (!version || !commitSha) continue;
+      results.push({ version, commitSha });
+    }
+  }
+
+  return results;
+}
+
+async function resolveVersionFromRevision(currentRevision: string): Promise<string | null> {
+  const tags = await fetchSemverTags();
+  const current = currentRevision.trim().toLowerCase();
+
+  const matches = tags
+    .filter((tag) => tag.commitSha.toLowerCase() === current)
+    .map((tag) => tag.version);
+
+  if (matches.length === 0) {
+    return null;
+  }
+
+  matches.sort((a, b) => compareVersions(b, a));
+  return matches[0];
+}
+
+function isSemverLike(version: string): boolean {
+  return /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(normalizeVersion(version));
+}
+
+async function isCurrentBehind(baseRef: string, headRef: string): Promise<boolean | null> {
+  try {
+    const response = await fetch(`${COMPARE_API_URL}/${baseRef}...${headRef}`, {
+      headers: getGithubHeaders(),
+    });
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = (await response.json()) as { status?: string };
+    const status = String(data.status || '').toLowerCase();
+
+    if (status === 'behind') return true;
+    if (status === 'identical' || status === 'ahead') return false;
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+interface BranchHead {
+  sha: string;
+  htmlUrl: string | null;
+}
+
+async function fetchDefaultBranchHead(): Promise<BranchHead> {
+  const response = await fetch(`${COMMITS_API_URL}/${encodeURIComponent(GITHUB_DEFAULT_BRANCH)}`, {
+    headers: getGithubHeaders(),
+  });
+
+  if (!response.ok) {
+    throw new Error(`GitHub default branch lookup failed (${response.status})`);
+  }
+
+  const data = (await response.json()) as { sha?: string; html_url?: string };
+  const sha = String(data.sha || '').trim();
+  if (!sha) {
+    throw new Error('GitHub default branch lookup did not include a commit sha');
+  }
+
+  return {
+    sha,
+    htmlUrl: data.html_url || null,
+  };
+}
+
+export async function getAppVersionStatus(force = false): Promise<AppVersionStatus> {
+  const now = Date.now();
+  if (!force && cache && now - lastCheckMs < CHECK_TTL_MS) {
+    return cache;
+  }
+
+  const currentVersion = normalizeVersion(getCurrentVersion());
+  const currentRevision = resolveCurrentRevision(currentVersion);
+
+  try {
+    let latestVersion: string | null = null;
+    let releaseUrl: string | null = null;
+    let releaseNotes: string | null = null;
+    let displayVersion = currentVersion;
+    let updateAvailable = false;
+
+    try {
+      const releaseInfo = await fetchLatestReleaseVersion();
+      latestVersion = releaseInfo.latestVersion;
+      releaseUrl = releaseInfo.releaseUrl;
+      releaseNotes = releaseInfo.releaseNotes;
+    } catch {
+      // Semver release metadata can be unavailable for branch builds.
+      // Fall back to comparing current revision with default branch head.
+      if (currentRevision) {
+        try {
+          const head = await fetchDefaultBranchHead();
+          const behind = await isCurrentBehind(head.sha, currentRevision);
+          updateAvailable = behind === true;
+          releaseUrl = head.htmlUrl || `${GITHUB_URL}/commits/${GITHUB_DEFAULT_BRANCH}`;
+        } catch {
+          // Keep a non-fatal state when remote metadata cannot be reached.
+        }
+      }
+    }
+
+    if (!isSemverLike(displayVersion) && currentRevision) {
+      const resolvedVersion = await resolveVersionFromRevision(currentRevision);
+      if (resolvedVersion) {
+        displayVersion = resolvedVersion;
+      }
+    }
+
+    if (latestVersion && isSemverLike(displayVersion)) {
+      updateAvailable = compareVersions(latestVersion, displayVersion) > 0;
+    } else if (currentRevision) {
+      const baseRef = latestVersion ? `v${latestVersion}` : GITHUB_DEFAULT_BRANCH;
+      const behind = await isCurrentBehind(baseRef, currentRevision);
+      if (behind !== null) {
+        updateAvailable = behind;
+      }
+    }
+
+    cache = {
+      currentVersion: displayVersion,
+      currentRevision,
+      latestVersion,
+      updateAvailable,
+      checkedAt: new Date().toISOString(),
+      githubUrl: GITHUB_URL,
+      releaseUrl,
+      releaseNotes,
+      checkFailed: false,
+    };
+    lastCheckMs = now;
+    return cache;
+  } catch {
+    cache = {
+      currentVersion,
+      currentRevision,
+      latestVersion: cache?.latestVersion || null,
+      updateAvailable: cache?.updateAvailable || false,
+      checkedAt: new Date().toISOString(),
+      githubUrl: GITHUB_URL,
+      releaseUrl: cache?.releaseUrl || null,
+      releaseNotes: cache?.releaseNotes || null,
+      checkFailed: true,
+    };
+    lastCheckMs = now;
+    return cache;
+  }
+}
