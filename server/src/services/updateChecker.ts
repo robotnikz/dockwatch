@@ -200,9 +200,40 @@ async function getRemoteDigest(image: string, context?: string): Promise<string 
       console.warn('[UpdateChecker] Rejected unsafe manifest URL', { image, manifestUrl: manifestUrl.toString() });
       return null;
     }
-    const resp = await fetchWithRetry(manifestUrl, { method: 'HEAD', headers }, 'registry manifest');
+    let resp = await fetchWithRetry(manifestUrl, { method: 'HEAD', headers }, 'registry manifest');
 
-    if (!resp.ok) return null;
+    // Handle authentication for other registries (e.g. ghcr.io, lscr.io, quay.io) if they return 401
+    if (resp.status === 401) {
+      const authHeader = resp.headers.get('www-authenticate');
+      if (authHeader && authHeader.toLowerCase().startsWith('bearer ')) {
+        const realmMatch = authHeader.match(/realm="([^"]+)"/i);
+        const serviceMatch = authHeader.match(/service="([^"]+)"/i);
+        const scopeMatch = authHeader.match(/scope="([^"]+)"/i);
+        
+        if (realmMatch) {
+          const authUrl = new URL(realmMatch[1]);
+          if (serviceMatch) authUrl.searchParams.set('service', serviceMatch[1]);
+          // fallback to repository:repo:pull if backend doesn't give a scope but 401'd
+          if (scopeMatch) {
+            authUrl.searchParams.set('scope', scopeMatch[1]);
+          } else {
+            authUrl.searchParams.set('scope', `repository:${repo}:pull`);
+          }
+          
+          const tokenResp = await fetchWithRetry(authUrl, { method: 'GET' }, 'registry token fallback');
+          if (tokenResp.ok) {
+            const tokenData = await tokenResp.json() as RegistryToken;
+            headers['Authorization'] = `Bearer ${tokenData.token}`;
+            resp = await fetchWithRetry(manifestUrl, { method: 'HEAD', headers }, 'registry manifest retry');
+          }
+        }
+      }
+    }
+
+    if (!resp.ok) {
+      console.warn(`[UpdateChecker] Failed to fetch manifest for ${image}: ${resp.status} ${resp.statusText}`);
+      return null;
+    }
 
     const digest = resp.headers.get('docker-content-digest');
     return digest;
@@ -229,8 +260,12 @@ function isDigestPinnedImage(image: string): boolean {
 
 /** Check a single image for updates */
 export async function checkImageUpdate(image: string, context?: string): Promise<UpdateResult> {
+  const contextStr = context ? ` [${context}]` : '';
+  console.log(`[UpdateChecker] Checking image: ${image}${contextStr}`);
+
   // Digest-pinned images are immutable by design and should not report tag-based updates.
   if (isDigestPinnedImage(image)) {
+    console.log(`[UpdateChecker] Image ${image} is digest-pinned. Skipping update check.`);
     const localDigest = await getLocalDigest(image);
     setUpdateCache(image, localDigest, localDigest, context);
     return { image, localDigest, remoteDigest: localDigest, updateAvailable: false, context };
@@ -240,6 +275,8 @@ export async function checkImageUpdate(image: string, context?: string): Promise
   const remoteDigest = await getRemoteDigest(image, context);
 
   const updateAvailable = !!(localDigest && remoteDigest && localDigest !== remoteDigest);
+  console.log(`[UpdateChecker] Result for ${image} - Local: ${localDigest?.slice(0, 15) || 'n/a'} | Remote: ${remoteDigest?.slice(0, 15) || 'n/a'} | Update: ${updateAvailable ? 'YES' : 'NO'}`);
+  
   setUpdateCache(image, localDigest, remoteDigest, context);
 
   return { image, localDigest, remoteDigest, updateAvailable, context };
@@ -313,6 +350,10 @@ export async function checkAllUpdates(): Promise<UpdateResult[]> {
   }
 
   const results: UpdateResult[] = [];
+  if (imagesToProcess.length > 0) {
+    console.log(`[UpdateChecker] Starting global update check for ${imagesToProcess.length} unique images...`);
+  }
+
   for (const { image, contexts } of imagesToProcess) {
     const result = await checkImageUpdate(image, contexts.join(', '));
     results.push(result);
@@ -321,7 +362,10 @@ export async function checkAllUpdates(): Promise<UpdateResult[]> {
   // Send Discord notification for any updates
   const updatesAvailable = results.filter(r => r.updateAvailable);
   if (updatesAvailable.length > 0) {
+    console.log(`[UpdateChecker] Global check finished. Updates found for ${updatesAvailable.length} images.`);
     await notifyUpdatesAvailable(updatesAvailable);
+  } else if (imagesToProcess.length > 0) {
+    console.log(`[UpdateChecker] Global check finished. No new updates found.`);
   }
 
   return results;
