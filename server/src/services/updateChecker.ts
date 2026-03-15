@@ -256,14 +256,14 @@ export interface UpdateResult {
   context?: string;
 }
 
-function resolveEnvVars(str: string, env: Record<string, string>): string {
+function resolveEnvVars(str: string, env: NodeJS.Dict<string>): string {
   if (typeof str !== 'string') return str;
   return str.replace(/\$\{([^}:-]+)(?:[:-]+([^}]+))?\}|\$([a-zA-Z0-9_]+)/g, (match, p1, p2, p3) => {
     const key = p1 || p3;
     const defaultVal = p2 || '';
-    if (env[key] !== undefined && env[key] !== '') return env[key];
+    if (env[key] !== undefined && env[key] !== '') return env[key] as string;
     if (p2 !== undefined) return defaultVal;
-    return process.env[key] !== undefined ? process.env[key] : '';
+    return process.env[key] !== undefined ? process.env[key] as string : '';
   });
 }
 
@@ -306,7 +306,7 @@ export async function checkAllUpdates(): Promise<UpdateResult[]> {
   for (const stack of stacks) {
     try {
       const compose = await getComposeContent(stack);
-      let stackEnv: Record<string, string> = {};
+      let stackEnv: NodeJS.Dict<string> = {};
       try {
         const envContent = await fs.readFile(path.join(stackDir(stack), '.env'), 'utf8');
         stackEnv = parseEnv(envContent);
