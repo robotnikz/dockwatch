@@ -1,9 +1,11 @@
 import { getStackImages, getLocalDigest } from './docker.js';
 import { setUpdateCache, getAllUpdateCache, getUpdateCache, getSetting } from '../db.js';
 import { notifyUpdatesAvailable } from './discord.js';
-import { listStacks } from './docker.js';
-import { getComposeContent } from './docker.js';
+import { listStacks, getComposeContent, stackDir } from './docker.js';
 import { parse } from 'yaml';
+import { parseEnv } from 'node:util';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 
 interface RegistryToken {
   token: string;
@@ -254,6 +256,17 @@ export interface UpdateResult {
   context?: string;
 }
 
+function resolveEnvVars(str: string, env: Record<string, string>): string {
+  if (typeof str !== 'string') return str;
+  return str.replace(/\$\{([^}:-]+)(?:[:-]+([^}]+))?\}|\$([a-zA-Z0-9_]+)/g, (match, p1, p2, p3) => {
+    const key = p1 || p3;
+    const defaultVal = p2 || '';
+    if (env[key] !== undefined && env[key] !== '') return env[key];
+    if (p2 !== undefined) return defaultVal;
+    return process.env[key] !== undefined ? process.env[key] : '';
+  });
+}
+
 function isDigestPinnedImage(image: string): boolean {
   return /@sha256:[a-f0-9]{64}$/i.test(image.trim());
 }
@@ -293,12 +306,22 @@ export async function checkAllUpdates(): Promise<UpdateResult[]> {
   for (const stack of stacks) {
     try {
       const compose = await getComposeContent(stack);
+      let stackEnv: Record<string, string> = {};
+      try {
+        const envContent = await fs.readFile(path.join(stackDir(stack), '.env'), 'utf8');
+        stackEnv = parseEnv(envContent);
+      } catch {
+        // ignore if no .env
+      }
+
       const doc = parse(compose) as any;
       const services = doc?.services || {};
       for (const [serviceName, serviceConfig] of Object.entries(services)) {
         const service = serviceConfig as any;
-        const image = service?.image;
+        let image = service?.image;
         if (!image || typeof image !== 'string') continue;
+        
+        image = resolveEnvVars(image, stackEnv);
 
         const labels = service?.labels;
         const checkExcluded = Array.isArray(labels)
