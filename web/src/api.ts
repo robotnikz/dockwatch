@@ -18,6 +18,18 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   return data as T;
 }
 
+// Build the error for a failed streaming response. Mirrors request()'s 401
+// handling so an expired session redirects to login instead of showing a
+// cryptic "HTTP 401" in the stream pane.
+function streamResponseError(res: Response): Error {
+  if (res.status === 401) {
+    window.dispatchEvent(new CustomEvent('dockwatch:auth-required'));
+  }
+  const err: any = new Error(`HTTP ${res.status}`);
+  err.status = res.status;
+  return err;
+}
+
 // ---- Auth ----
 export interface AuthMe {
   enabled: boolean;
@@ -246,7 +258,7 @@ export async function streamCleanupRun(
     body: JSON.stringify({ options: args.options, dryRun: args.dryRun }),
   });
 
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) throw streamResponseError(res);
 
   const reader = res.body?.getReader();
   if (!reader) throw new Error('Streaming not supported by browser');
@@ -316,7 +328,7 @@ export async function streamStackAction(
     headers: { 'Content-Type': 'application/json' },
   });
   
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) throw streamResponseError(res);
   
   const reader = res.body?.getReader();
   if (!reader) throw new Error('Streaming not supported by browser');
@@ -371,7 +383,7 @@ export async function streamStackServiceUpdate(
     headers: { 'Content-Type': 'application/json' },
   });
 
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) throw streamResponseError(res);
 
   const reader = res.body?.getReader();
   if (!reader) throw new Error('Streaming not supported by browser');

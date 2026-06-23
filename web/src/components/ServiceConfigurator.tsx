@@ -93,7 +93,7 @@ export default function ServiceConfigurator({ content, setContent }: Props) {
 
   return (
     <div>
-      <h2 className="text-xl font-medium text-white mb-3 tracking-tight">Services Konfiguration</h2>
+      <h2 className="text-xl font-medium text-white mb-3 tracking-tight">Service Configuration</h2>
       <div className="space-y-3">
         {services.map((item) => {
           const svcName = item.key && typeof item.key === 'object' && 'value' in item.key ? (item.key as any).value : String(item.key);
@@ -146,7 +146,7 @@ export default function ServiceConfigurator({ content, setContent }: Props) {
                     <label className="block text-xs font-semibold text-dock-muted mb-1 uppercase tracking-wider">CPU Limit</label>
                     <input 
                       type="text" 
-                      placeholder="z.B. 0.5" 
+                      placeholder="e.g. 0.5"
                       value={currentCpus}
                       onChange={(e) => setLimit(svcName, 'cpus', e.target.value)}
                       className="w-full bg-[#0c0d12] border border-dock-border/50 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-dock-accent transition"
@@ -156,7 +156,7 @@ export default function ServiceConfigurator({ content, setContent }: Props) {
                     <label className="block text-xs font-semibold text-dock-muted mb-1 uppercase tracking-wider">RAM Limit</label>
                     <input 
                       type="text" 
-                      placeholder="z.B. 512M" 
+                      placeholder="e.g. 512M"
                       value={currentMem}
                       onChange={(e) => setLimit(svcName, 'memory', e.target.value)}
                       className="w-full bg-[#0c0d12] border border-dock-border/50 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-dock-accent transition"

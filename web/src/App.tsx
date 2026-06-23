@@ -9,23 +9,27 @@ import CleanupPage from './pages/Cleanup';
 import LoginPage from './pages/Login';
 import { changePasswordAuth, getAuthMe, logoutAuth, type AuthMe } from './api';
 
+// Fail safe: assume auth is required and the user is not authenticated until the
+// server says otherwise. A failed /auth/me must never fall open to the full UI.
 const DEFAULT_AUTH_ME: AuthMe = {
-  enabled: false,
+  enabled: true,
   configured: false,
-  authenticated: true,
+  authenticated: false,
   username: null,
 };
 
 export default function App() {
   const [authMe, setAuthMe] = useState<AuthMe>(DEFAULT_AUTH_ME);
   const [loadingAuth, setLoadingAuth] = useState(true);
+  const [authError, setAuthError] = useState(false);
 
   const refreshAuth = useCallback(async () => {
     try {
       const me = await getAuthMe();
       setAuthMe(me);
+      setAuthError(false);
     } catch {
-      setAuthMe(DEFAULT_AUTH_ME);
+      setAuthError(true);
     } finally {
       setLoadingAuth(false);
     }
@@ -57,6 +61,26 @@ export default function App() {
     return (
       <div className="min-h-screen bg-dock-bg flex items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-dock-border border-t-dock-accent" />
+      </div>
+    );
+  }
+
+  if (authError) {
+    return (
+      <div className="min-h-screen bg-dock-bg flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <p className="text-dock-text">Could not reach the DockWatch server.</p>
+          <button
+            type="button"
+            onClick={() => {
+              setLoadingAuth(true);
+              void refreshAuth();
+            }}
+            className="rounded-md border border-dock-border px-4 py-2 text-sm text-dock-text hover:bg-dock-border/30"
+          >
+            Retry
+          </button>
+        </div>
       </div>
     );
   }
