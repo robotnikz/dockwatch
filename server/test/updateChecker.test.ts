@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildManifestUrl, isAllowedRegistryHost, parseImage } from '../src/services/updateChecker.js';
+import { buildManifestUrl, checkImageUpdate, isAllowedRegistryHost, isValidImageReference, parseImage } from '../src/services/updateChecker.js';
 
 describe('update checker helpers', () => {
   it('parses docker hub short image references', () => {
@@ -33,5 +33,24 @@ describe('update checker helpers', () => {
   it('builds encoded registry manifest urls safely', () => {
     const url = buildManifestUrl('ghcr.io', 'robotnikz/my image', 'v1.0.0+meta');
     expect(url.toString()).toBe('https://ghcr.io/v2/robotnikz/my%20image/manifests/v1.0.0%2Bmeta');
+  });
+
+  it('accepts well-formed image references', () => {
+    expect(isValidImageReference('nginx:latest')).toBe(true);
+    expect(isValidImageReference('ghcr.io/robotnikz/dockwatch:v1.2.3')).toBe(true);
+    expect(isValidImageReference('registry-1.docker.io/library/nginx@sha256:abc123')).toBe(true);
+  });
+
+  it('rejects flag-like and malformed image references', () => {
+    expect(isValidImageReference('-x')).toBe(false);
+    expect(isValidImageReference('--format')).toBe(false);
+    expect(isValidImageReference('')).toBe(false);
+    expect(isValidImageReference('nginx latest')).toBe(false);
+    expect(isValidImageReference('a'.repeat(513))).toBe(false);
+  });
+
+  it('rejects an invalid image reference before any docker/registry call', async () => {
+    await expect(checkImageUpdate('--format')).rejects.toThrow('Invalid image reference');
+    await expect(checkImageUpdate('-x')).rejects.toThrow('Invalid image reference');
   });
 });

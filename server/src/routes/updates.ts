@@ -29,7 +29,9 @@ router.post('/check/:image(*)', async (req: Request<{ image: string }>, res: Res
     const result = await checkImageUpdate(req.params.image as string);
     res.json(result);
   } catch (err: any) {
-    res.status(500).json({ error: err.message });
+    const message = String(err?.message || 'Update check failed');
+    const status = message.startsWith('Invalid image reference') ? 400 : 500;
+    res.status(status).json({ error: message });
   }
 });
 

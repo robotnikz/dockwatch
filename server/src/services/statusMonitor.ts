@@ -1,4 +1,4 @@
-import cron from 'node-cron';
+import cron, { type ScheduledTask } from 'node-cron';
 import { getAllContainerStats } from './stats.js';
 import { notifyStatusAlerts, type StatusAlert } from './discord.js';
 import { execFile } from 'node:child_process';
@@ -7,7 +7,7 @@ import { insertSchedulerEvent } from '../db.js';
 
 const execFileAsync = promisify(execFile);
 
-let monitorTask: cron.ScheduledTask | null = null;
+let monitorTask: ScheduledTask | null = null;
 let lastStates: Map<string, { status: string; health: string }> = new Map();
 
 async function getDetailedStatus(): Promise<Map<string, { status: string; health: string }>> {

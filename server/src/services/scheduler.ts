@@ -1,11 +1,11 @@
-import cron from 'node-cron';
+import cron, { type ScheduledTask } from 'node-cron';
 import { checkAllUpdates } from './updateChecker.js';
 import { getSetting, insertSchedulerEvent } from '../db.js';
 import { composePullAndRecreate, getComposeContent, listStacks } from './docker.js';
 import { parse } from 'yaml';
 import { notifySchedulerError } from './discord.js';
 
-let task: cron.ScheduledTask | null = null;
+let task: ScheduledTask | null = null;
 let isUpdateCycleRunning = false;
 
 async function runUpdateCycle(): Promise<void> {

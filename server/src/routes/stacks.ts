@@ -18,7 +18,7 @@ import {
 } from '../services/docker.js';
 import { notifyStackAction } from '../services/discord.js';
 import { registerStack, removeStack } from '../db.js';
-import { stackDir } from '../services/docker.js';
+import { stackDir, isValidComposeServiceName } from '../services/docker.js';
 import { parseDocument } from 'yaml';
 
 type NameParams = { name: string };
@@ -265,7 +265,12 @@ router.get('/:name/logs', async (req: Request<NameParams>, res: Response) => {
     const parsedTail = Number.parseInt(String(req.query.tail ?? ''), 10);
     const tail = Number.isFinite(parsedTail) ? Math.min(Math.max(parsedTail, 1), 1000) : 100;
     const container = req.query.container as string | undefined;
-    
+
+    if (container !== undefined && !isValidComposeServiceName(container)) {
+      res.status(400).json({ error: 'Invalid container name' });
+      return;
+    }
+
     let output = '';
     if (container) {
       output = await composeContainerLogs(req.params.name, container, tail);

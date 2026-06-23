@@ -180,7 +180,8 @@ export async function composeLogs(name: string, tail = 100): Promise<string> {
 }
 
 export async function composeContainerLogs(name: string, container: string, tail = 100): Promise<string> {
-  const result = await runCompose(name, ['logs', '--tail', String(tail), '--no-color', container]);
+  const safeContainer = validateComposeServiceName(container);
+  const result = await runCompose(name, ['logs', '--tail', String(tail), '--no-color', safeContainer]);
   return result.stdout + result.stderr;
 }
 
@@ -252,10 +253,17 @@ export async function composeManualUpdate(name: string, onChunk?: (chunk: string
   return output;
 }
 
+export function isValidComposeServiceName(service: string): boolean {
+  // Compose service / container names are alnum plus underscore, dash and dot,
+  // and must start with an alphanumeric or underscore. Requiring a non-dash
+  // first character prevents the value from being interpreted as a
+  // `docker compose` CLI flag (e.g. `--no-log-prefix`) — argument-injection hardening.
+  return /^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$/.test(String(service || '').trim());
+}
+
 function validateComposeServiceName(service: string): string {
   const trimmed = String(service || '').trim();
-  // Compose service keys are typically alnum plus underscore, dash, and dot.
-  if (!/^[a-zA-Z0-9_.-]+$/.test(trimmed)) {
+  if (!isValidComposeServiceName(trimmed)) {
     throw new Error(`Invalid service name: ${service}`);
   }
   return trimmed;
