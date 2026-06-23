@@ -3,9 +3,18 @@ services:
     image: ghcr.io/robotnikz/dockwatch:latest
     container_name: dockwatch
     restart: unless-stopped
+    # Prevent the container from acquiring new privileges (defense-in-depth).
+    security_opt:
+      - "no-new-privileges:true"
     ports:
+      # Exposes the UI on all interfaces. On a host that must not face the
+      # internet, prefer binding to loopback and fronting it with a reverse
+      # proxy / VPN, e.g. "127.0.0.1:3000:3000".
       - "3000:3000"
     volumes:
+      # ⚠️ Mounting the Docker socket grants this container root-equivalent
+      # control of the host. See SECURITY.md for a hardened docker-socket-proxy
+      # setup that limits the exposed Docker API surface.
       - /var/run/docker.sock:/var/run/docker.sock
       - ./data:/app/data
       # ⚠️ Stacks path MUST be identical on host and container
@@ -15,3 +24,7 @@ services:
       - PORT=3000
       - DOCKWATCH_DATA=/app/data
       - DOCKWATCH_STACKS=/opt/stacks
+    # Optional resource limits (uncomment to cap container usage):
+    # mem_limit: 512m
+    # pids_limit: 256
+    # cpus: "1.0"
