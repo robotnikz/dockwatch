@@ -68,6 +68,15 @@ describe('updates routes', () => {
     expect(res.body.error).toContain('image-check-failed');
   });
 
+  it('maps invalid image references to 400', async () => {
+    checkImageUpdateMock.mockRejectedValueOnce(new Error('Invalid image reference: -x'));
+
+    const res = await request(await buildApp()).post('/updates/check/-x');
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('Invalid image reference');
+  });
+
   it('surfaces internal errors', async () => {
     checkAllUpdatesMock.mockRejectedValueOnce(new Error('boom'));
 

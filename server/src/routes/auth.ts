@@ -5,7 +5,6 @@ import {
   getAuthCookieName,
   getAuthCookieOptions,
   getAuthenticatedUsernameFromToken,
-  getConfiguredAuthUsername,
   getSessionTokenFromCookieHeader,
   invalidateSessionToken,
   invalidateSessionsForUser,
@@ -15,8 +14,14 @@ import {
   validateUsername,
   verifyAuthCredentials,
 } from '../services/auth.js';
+import { createApiRateLimit } from '../middleware/apiRateLimit.js';
 
 const router = Router();
+
+// Strict throttle for credential-sensitive endpoints to slow brute-force
+// attempts. This sits on top of the global API limiter and only affects
+// login / setup / password-change, which legitimate users hit rarely.
+const authActionRateLimit = createApiRateLimit({ windowMs: 15 * 60_000, maxRequests: 30 });
 
 function isSecureRequest(req: Request): boolean {
   if (req.secure) return true;
@@ -35,7 +40,7 @@ router.get('/me', (req: Request, res: Response) => {
   res.json(buildAuthMe(user));
 });
 
-router.post('/setup', (req: Request, res: Response) => {
+router.post('/setup', authActionRateLimit, (req: Request, res: Response) => {
   if (isAuthConfigured()) {
     res.status(400).json({ error: 'Auth is already configured' });
     return;
@@ -59,7 +64,7 @@ router.post('/setup', (req: Request, res: Response) => {
   res.json({ ok: true, me: buildAuthMe(username) });
 });
 
-router.post('/login', (req: Request, res: Response) => {
+router.post('/login', authActionRateLimit, (req: Request, res: Response) => {
   if (!isAuthConfigured()) {
     res.status(400).json({ error: 'Auth is not configured yet' });
     return;
@@ -85,7 +90,7 @@ router.post('/logout', (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
-router.post('/change-password', (req: Request, res: Response) => {
+router.post('/change-password', authActionRateLimit, (req: Request, res: Response) => {
   const username = getCurrentUser(req);
   if (!username) {
     res.status(401).json({ error: 'Unauthorized', code: 'AUTH_REQUIRED' });
@@ -110,10 +115,6 @@ router.post('/change-password', (req: Request, res: Response) => {
   const newToken = createAuthSession(username);
   res.cookie(getAuthCookieName(), newToken, getAuthCookieOptions(isSecureRequest(req)));
   res.json({ ok: true, me: buildAuthMe(username) });
-});
-
-router.get('/username', (_req: Request, res: Response) => {
-  res.json({ username: getConfiguredAuthUsername() });
 });
 
 export default router;

@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   composeManualUpdate: vi.fn(),
   composeManualUpdateService: vi.fn(),
   composeLogs: vi.fn(),
+  composeContainerLogs: vi.fn(),
   composePs: vi.fn(),
   getStackImages: vi.fn(),
   stackDir: vi.fn(),
@@ -34,9 +35,11 @@ vi.mock('../src/services/docker.js', () => ({
   composeManualUpdate: mocks.composeManualUpdate,
   composeManualUpdateService: mocks.composeManualUpdateService,
   composeLogs: mocks.composeLogs,
+  composeContainerLogs: mocks.composeContainerLogs,
   composePs: mocks.composePs,
   getStackImages: mocks.getStackImages,
   stackDir: mocks.stackDir,
+  isValidComposeServiceName: (service: string) => /^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$/.test(String(service || '').trim()),
 }));
 
 vi.mock('../src/services/discord.js', () => ({
@@ -310,5 +313,20 @@ describe('stacks routes', () => {
     const logsFail = await request(buildApp()).get('/stacks/demo/logs');
     expect(logsFail.status).toBe(500);
     expect(logsFail.body.error).toContain('logs-failed');
+  });
+
+  it('routes valid container logs through and rejects flag-like container names', async () => {
+    mocks.composeContainerLogs.mockResolvedValue('container log line');
+
+    const ok = await request(buildApp()).get('/stacks/demo/logs?container=web-1&tail=20');
+    expect(ok.status).toBe(200);
+    expect(ok.body.output).toContain('container log line');
+    expect(mocks.composeContainerLogs).toHaveBeenCalledWith('demo', 'web-1', 20);
+
+    const evil = await request(buildApp()).get('/stacks/demo/logs?container=--no-log-prefix');
+    expect(evil.status).toBe(400);
+    expect(evil.body.error).toContain('Invalid container name');
+    // The flag-like value must never reach the docker layer.
+    expect(mocks.composeContainerLogs).not.toHaveBeenCalledWith('demo', '--no-log-prefix', expect.anything());
   });
 });

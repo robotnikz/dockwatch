@@ -59,6 +59,10 @@ describe('settings routes', () => {
     expect(res.status).toBe(200);
     expect(res.body.discord_webhook_set).toBe('true');
     expect(String(res.body.discord_webhook)).toContain('...');
+    // The secret token (or any tail of it) must never be echoed back.
+    expect(String(res.body.discord_webhook)).not.toContain('abcdefghijklmnopqrstuvwxyz');
+    expect(String(res.body.discord_webhook)).not.toContain('qrstuvwxyz');
+    expect(String(res.body.discord_webhook)).not.toContain('1234567890');
     expect(res.body.check_cron).toBe('0 1 * * *');
   });
 

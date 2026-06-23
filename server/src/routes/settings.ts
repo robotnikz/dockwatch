@@ -9,11 +9,17 @@ const router = Router();
 
 router.get('/', (_req: Request, res: Response) => {
   const settings = getAllSettings();
-  // Mask webhook URL in response
+  // Mask webhook URL in response: never echo any part of the secret token.
+  // Keep the '...' marker so the client treats the value as unchanged on save.
   if (settings.discord_webhook) {
     settings.discord_webhook_set = 'true';
-    const url = settings.discord_webhook;
-    settings.discord_webhook = url.substring(0, 40) + '...' + url.substring(url.length - 10);
+    let host = 'discord.com';
+    try {
+      host = new URL(String(settings.discord_webhook)).host || host;
+    } catch {
+      // Keep the default host on malformed stored values.
+    }
+    settings.discord_webhook = `https://${host}/api/webhooks/***...`;
   }
   res.json(settings);
 });

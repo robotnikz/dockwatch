@@ -89,6 +89,18 @@ function isSafeManifestUrl(url: URL, expectedHost: string): boolean {
   return /^\/v2\/[a-z0-9%._\/-]+\/manifests\/[a-z0-9%._-]+$/i.test(url.pathname);
 }
 
+/**
+ * Validate a Docker image reference before it is handed to the Docker CLI or a
+ * registry request. A valid reference always starts with an alphanumeric
+ * character, never '-', which prevents the value from being interpreted as a
+ * CLI flag (argument-injection hardening for `docker image inspect`).
+ */
+export function isValidImageReference(image: string): boolean {
+  const ref = String(image || '').trim();
+  if (ref.length === 0 || ref.length > 512) return false;
+  return /^[A-Za-z0-9][A-Za-z0-9._\-/:@]*$/.test(ref);
+}
+
 /** Parse image reference into registry, repo, tag */
 export function parseImage(image: string): { registry: string; repo: string; tag: string } {
   let registry = 'registry-1.docker.io';
@@ -273,6 +285,9 @@ function isDigestPinnedImage(image: string): boolean {
 
 /** Check a single image for updates */
 export async function checkImageUpdate(image: string, context?: string): Promise<UpdateResult> {
+  if (!isValidImageReference(image)) {
+    throw new Error(`Invalid image reference: ${image}`);
+  }
   const contextStr = context ? ` [${context}]` : '';
   console.log(`[UpdateChecker] Checking image: ${image}${contextStr}`);
 
