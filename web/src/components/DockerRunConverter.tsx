@@ -31,8 +31,25 @@ export default function DockerRunConverter({ onUseCompose }: Props) {
   };
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(result);
-    setCopied(true);
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(result);
+      } else {
+        // Fallback for non-secure (plain HTTP) contexts, where the async
+        // Clipboard API is unavailable — the documented LAN deployment mode.
+        const textarea = document.createElement('textarea');
+        textarea.value = result;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+      }
+      setCopied(true);
+    } catch {
+      // Clipboard write was blocked (permissions / unsupported); ignore.
+    }
   };
 
   return (
