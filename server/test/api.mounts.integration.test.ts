@@ -21,4 +21,13 @@ describe('api mount integration', () => {
       expect(res.status).not.toBe(404);
     }
   });
+
+  it('exposes an unauthenticated health endpoint', async () => {
+    const app = createApp();
+
+    const res = await request(app).get('/api/health');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ status: 'ok' });
+  });
 });

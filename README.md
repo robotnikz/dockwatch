@@ -122,7 +122,7 @@ services:
 
 ## 🔒 Security & Deployment Recommendations
 
-DockWatch undergoes routine automated security audits, including CodeQL scanning, dependabot vulnerability assessments, and strict linting. 
+DockWatch undergoes routine automated security checks on every pull request, including CodeQL scanning, Trivy filesystem scans, Dependabot vulnerability alerts, and TypeScript type-checking. Published images are signed with [cosign](https://github.com/sigstore/cosign) — see [SECURITY.md](SECURITY.md) for verification and a hardened, socket-proxied deployment. 
 
 **However, mounting the Docker socket (`/var/run/docker.sock`) grants root-level execution capabilities to the container.** 
 

@@ -104,6 +104,11 @@ export function createApp() {
   app.use('/api', apiRateLimit);
   app.use('/api/auth', authRouter);
 
+  // Unauthenticated liveness endpoint for container / orchestrator health checks.
+  app.get('/api/health', (_req, res) => {
+    res.json({ status: 'ok' });
+  });
+
   app.use('/api', (req, res, next) => {
     if (!isAuthEnabled()) {
       next();
