@@ -1,8 +1,8 @@
 blank_issues_enabled: true
 contact_links:
   - name: Questions / Support
-    url: https://github.com/robotnikz/dockwatch/discussions
-    about: Please use Discussions for questions and setup help.
+    url: https://github.com/robotnikz/dockwatch/issues
+    about: Open an issue for questions and setup help.
   - name: Security reports
     url: https://github.com/robotnikz/dockwatch/security/advisories/new
     about: Please report vulnerabilities privately (if enabled).

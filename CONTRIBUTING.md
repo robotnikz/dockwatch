@@ -23,9 +23,10 @@ npm --prefix server run dev
 npm --prefix web run dev
 ```
 
-Build checks:
+Tests and build checks:
 
 ```bash
+npm --prefix server test
 npm --prefix server run build
 npm --prefix web run build
 ```
@@ -38,7 +39,7 @@ npm --prefix web run build
 - Add screenshots for UI changes when relevant.
 
 Before opening a PR:
-- Ensure `server` and `web` builds pass.
+- Ensure the server tests and the `server` and `web` builds pass.
 - Ensure no secrets are committed.
 - Rebase/sync with `main` if needed.
 
@@ -54,7 +55,7 @@ Use the issue templates:
 - Bug report
 - Feature request
 
-For setup/help questions, use Discussions.
+For setup/help questions, open an issue.
 
 ## Security
 

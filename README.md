@@ -20,14 +20,17 @@
 
 ## Contents
 
-- [Features](#-features-at-a-glance)
+- [Features](#-features)
 - [Quick Start](#-quick-start)
-- [Configuration](#-configuration-compose)
-- [Environment Variables](#environment-variables)
+- [Configuration](#%EF%B8%8F-configuration-compose)
+  - [Environment Variables](#environment-variables)
+  - [Stack variables (`.env`)](#stack-variables-env)
+  - [Updates](#updates)
+  - [Self-update](#self-update)
 - [Authentication](#-authentication)
-- [Screenshots](#-screenshots)
+- [Screenshots](#%EF%B8%8F-screenshots)
 - [Security](#-security--deployment-recommendations)
-- [Architecture](#-architecture-stack)
+- [Architecture](#%EF%B8%8F-architecture-stack)
 - [Honest Comparison](#-honest-comparison)
 - [Shoutout](#-shoutout-to-the-ecosystem)
 - [License](#-license)
@@ -41,7 +44,8 @@
 * 🔄 **Smart Updates & Exclusions** — Pull and redeploy stacks or single services with one click. Optional scheduled auto-updates recreate only running services with new images. **Exclude specific containers from updates permanently with a simple toggle.**
 * 🎛️ **Visual Resource Limits** — Control CPU and **RAM limits/reservations directly from the UI** without manual YAML editing. Changes sync instantly to your `compose.yml`!
 * 💻 **Live Terminal Streaming** — View Docker Compose logs and process outputs in real-time through a responsive overlay.
-* 🔔 **Discord Notifications** — Stay informed about available updates, automated checks, and stack events via Discord webhooks.
+* 🧹 **Prune Assistant** — Preview and clean up unused containers, images, networks, volumes and build cache, manually or on a schedule, with label-based protection.
+* 🔔 **Discord Notifications** — Stay informed about available updates, stack actions, crashed or unhealthy containers, cleanup runs and scheduler errors via Discord webhooks.
 * 🪄 **Docker Run to Compose** — Instantly transform `docker run` commands into deployable `compose.yml` configurations.
 * 🔐 **Built-in Authentication** — Persistent local account setup on first run, login sessions, logout, and in-app password change.
 * ⬆️ **One-Click Self-Update** — Update DockWatch itself from the sidebar when a new release is out.
@@ -97,8 +101,12 @@ services:
 | `DOCKWATCH_STACKS` | `/opt/stacks` | Compose stacks directory |
 | `DOCKWATCH_ALLOWED_REGISTRIES` | Docker Hub, ghcr.io, quay.io, lscr.io, mcr.microsoft.com | Comma-separated registry hosts the update checker may contact |
 | `DOCKWATCH_COMPOSE_TIMEOUT_MS` | `1800000` (30 min) | Upper limit for one `docker compose` pull/up/down run before it is stopped |
+| `DOCKWATCH_MAX_CONCURRENT_COMPOSE_OPS` | `3` | How many `docker compose` commands may run at the same time (operations on the same stack always run one after another) |
 | `DOCKWATCH_COMPOSE_ENV_PASSTHROUGH` | – | Comma-separated variables of the DockWatch container that `docker compose` should see (see below) |
 | `DOCKWATCH_SELF_UPDATE_ENABLED` | `true` | Set to `false` to hide the one-click self-update |
+| `DOCKWATCH_CORS_ORIGINS` | – | Comma-separated extra browser origins allowed to call the API (LAN and localhost origins are always allowed) |
+| `DOCKWATCH_CORS_ALLOW_ALL` | `false` | Set to `true` to allow any origin (not recommended) |
+| `GITHUB_TOKEN` | – | Optional token for the DockWatch release check, avoids GitHub API rate limits |
 
 ### Stack variables (`.env`)
 
@@ -116,6 +124,8 @@ DockWatch runs `docker compose` with a minimal environment (`PATH`, `HOME`, `TZ`
 ### Self-update
 
 When DockWatch runs from a compose project with the Docker socket mounted, the sidebar offers *Install update* for new releases. DockWatch then starts a short-lived helper container that runs `docker compose pull` and `up -d` for the DockWatch service, because a container cannot reliably replace itself.
+
+Behind a `docker-socket-proxy` (see [SECURITY.md](SECURITY.md)) the button is not available; update with `docker compose pull && docker compose up -d` in the DockWatch folder.
 
 ## 🔐 Authentication
 
@@ -145,7 +155,7 @@ When DockWatch runs from a compose project with the Docker socket mounted, the s
 
 ## 🔒 Security & Deployment Recommendations
 
-DockWatch undergoes routine automated security checks on every pull request, including CodeQL scanning, Trivy filesystem scans, Dependabot vulnerability alerts, and TypeScript type-checking. Published images are signed with [cosign](https://github.com/sigstore/cosign) — see [SECURITY.md](SECURITY.md) for verification and a hardened, socket-proxied deployment. 
+DockWatch undergoes routine automated security checks on every pull request, including CodeQL scanning, Trivy filesystem scans, `npm audit`, Dependabot vulnerability alerts, and TypeScript type-checking. Published images are signed with [cosign](https://github.com/sigstore/cosign) — see [SECURITY.md](SECURITY.md) for verification and a hardened, socket-proxied deployment. 
 
 **However, mounting the Docker socket (`/var/run/docker.sock`) grants root-level execution capabilities to the container.** 
 
