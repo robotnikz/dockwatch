@@ -178,13 +178,20 @@ DockWatch undergoes routine automated security checks on every pull request, inc
 
 Why create another Docker interface? Here's where DockWatch fits in:
 
-| Feature / Aspect | 🐳 DockWatch | 🗂️ Dockge | 🚢 Portainer |
+| Feature / Aspect | 🐳 DockWatch | 🗂️ Dockge | 🚢 Portainer CE |
 | :--- | :--- | :--- | :--- |
-| **Primary Focus** | Personal Homelab management with automated updates | Minimalist Docker Compose management | Enterprise-grade Container, Swarm & K8s orchestration |
-| **Auto-Updating** | Built-in (Cron + 1-Click + Discord alerts) | Requires external tools (e.g., Watchtower) | Paid features or external tooling required |
-| **Resource Limits** | Native GUI controls for CPU & RAM | Manual YAML editing | GUI-based management |
-| **Tech Stack** | React 19 + Node.js (Modern & Fast) | Vue.js + Node.js (Stable & Robust) | AngularJS + Go (Feature-rich/Heavy) |
+| **Primary Focus** | Personal homelab management with automated updates | Minimalist Docker Compose management | All-in-one management for Docker, Swarm & Kubernetes |
+| **Image Update Checks** | Scheduled registry checks per service, Discord alert once per new version | None (manual pull via *Update*) | Up-to-date indicators only in the paid Business Edition |
+| **Auto-Updating** | Built-in, per-service opt-out; only running services are recreated | Requires external tools (e.g., Watchtower) | GitOps redeploy for Git-based stacks, optionally re-pulling images; other stacks need external tools |
+| **`.env` Files** | Editor tab per stack | Editor per stack | Variables UI or `.env` upload |
+| **Version History** | Last 20 versions per stack, restorable | – | Via Git for Git-based stacks |
+| **Resource Limits** | GUI for CPU & RAM, written to `compose.yaml` | Manual YAML editing | GUI for containers, YAML for stacks |
+| **Cleanup** | Prune assistant with preview, schedule and label protection | – | Manual removal of unused resources |
+| **Multiple Hosts** | Single host | Yes (agents) | Yes (agents, Edge) |
+| **Tech Stack** | React 19 + Node.js | Vue.js + Node.js | Go + TypeScript/React (migrating from AngularJS) |
 | **Learning Curve** | Extremely Intuitive | Very Low | Moderate (Higher complexity) |
+
+*Portainer details refer to the free Community Edition. Comparison checked in October 2026.*
 
 ---
 
