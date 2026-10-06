@@ -60,8 +60,11 @@ services:
       IMAGES: 1
       NETWORKS: 1
       VOLUMES: 1
+      INFO: 1            # host details on the dashboard (docker info)
+      SYSTEM: 1          # disk usage for the prune assistant (docker system df)
+      BUILD: 1           # build cache cleanup (docker builder prune)
       POST: 1            # required to deploy / update / prune
-      EXEC: 1            # required for log / terminal streaming
+      # EXEC is not needed: logs are read through the containers API
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks: [internal]
@@ -79,6 +82,10 @@ networks:
   internal:
     internal: true
 ```
+
+With the proxy, the one-click self-update is not available (it needs the raw
+socket to start its helper container). Update DockWatch with
+`docker compose pull && docker compose up -d` instead.
 
 Note: a plain `:ro` mount on the app container is **not** sufficient — the
 Docker API is read/write over a read-only-mounted socket file. The proxy is the
