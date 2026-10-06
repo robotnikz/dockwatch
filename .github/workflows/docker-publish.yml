@@ -179,7 +179,15 @@ jobs:
         with:
           node-version: 22
 
-      - run: npm install -g semantic-release @semantic-release/git @semantic-release/changelog @semantic-release/commit-analyzer @semantic-release/release-notes-generator conventional-changelog-conventionalcommits
+      # Pinned: unpinned installs broke releases when conventional-changelog-conventionalcommits@10
+      # started to require conventional-changelog-writer@9, while release-notes-generator@14 ships writer@8.
+      - run: >-
+          npm install -g
+          semantic-release@25.0.9
+          @semantic-release/commit-analyzer@13.0.1
+          @semantic-release/release-notes-generator@14.1.1
+          @semantic-release/github@12.0.10
+          conventional-changelog-conventionalcommits@9.3.1
 
       - name: Semantic Release
         id: semantic_release
