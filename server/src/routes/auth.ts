@@ -14,14 +14,15 @@ import {
   validateUsername,
   verifyAuthCredentials,
 } from '../services/auth.js';
-import { createApiRateLimit } from '../middleware/apiRateLimit.js';
+import rateLimit from 'express-rate-limit';
+import { apiRateLimitOptions } from '../middleware/apiRateLimit.js';
 
 const router = Router();
 
 // Strict throttle for credential-sensitive endpoints to slow brute-force
 // attempts. This sits on top of the global API limiter and only affects
 // login / setup / password-change, which legitimate users hit rarely.
-const authActionRateLimit = createApiRateLimit({ windowMs: 15 * 60_000, maxRequests: 30 });
+const authActionRateLimit = rateLimit(apiRateLimitOptions({ windowMs: 15 * 60_000, maxRequests: 30 }));
 
 function isSecureRequest(req: Request): boolean {
   if (req.secure) return true;

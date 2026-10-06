@@ -14,7 +14,7 @@ import resourcesRouter from './routes/resources.js';
 import metaRouter from './routes/meta.js';
 import cleanupRouter from './routes/cleanup.js';
 import authRouter from './routes/auth.js';
-import { createApiRateLimit } from './middleware/apiRateLimit.js';
+import { apiRateLimitOptions } from './middleware/apiRateLimit.js';
 import { getAuthenticatedUsernameFromToken, getSessionTokenFromCookieHeader, isAuthEnabled } from './services/auth.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -77,7 +77,7 @@ function createCorsOptions(): cors.CorsOptions {
 export function createApp() {
   const app = express();
   app.disable('x-powered-by');
-  const apiRateLimit = createApiRateLimit({ windowMs: 60_000, maxRequests: 180 });
+  const apiRateLimit = rateLimit(apiRateLimitOptions({ windowMs: 60_000, maxRequests: 180 }));
   const pageRateLimit = rateLimit({
     windowMs: 60_000,
     limit: 600,

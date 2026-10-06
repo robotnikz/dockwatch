@@ -1,63 +1,47 @@
-import { describe, expect, it, vi } from 'vitest';
-import { createApiRateLimit } from '../src/middleware/apiRateLimit.js';
+import express from 'express';
+import rateLimit from 'express-rate-limit';
+import request from 'supertest';
+import { describe, expect, it } from 'vitest';
+import { apiRateLimitOptions } from '../src/middleware/apiRateLimit.js';
 
-function makeResponse() {
-  return {
-    statusCode: 200,
-    headers: {} as Record<string, string>,
-    body: undefined as unknown,
-    setHeader(key: string, value: string) {
-      this.headers[key] = value;
-    },
-    status(code: number) {
-      this.statusCode = code;
-      return this;
-    },
-    json(payload: unknown) {
-      this.body = payload;
-      return this;
-    },
-  };
+function buildApp(windowMs: number, maxRequests: number) {
+  const app = express();
+  app.use(rateLimit(apiRateLimitOptions({ windowMs, maxRequests })));
+  app.get('/ping', (_req, res) => {
+    res.json({ ok: true });
+  });
+  return app;
 }
 
 describe('api rate limit middleware', () => {
-  it('allows requests up to configured max', () => {
-    const middleware = createApiRateLimit({ windowMs: 1000, maxRequests: 2 });
-    const next = vi.fn();
+  it('allows requests up to configured max', async () => {
+    const app = buildApp(60_000, 2);
 
-    middleware({ ip: '1.1.1.1', socket: { remoteAddress: '1.1.1.1' } } as any, makeResponse() as any, next as any);
-    middleware({ ip: '1.1.1.1', socket: { remoteAddress: '1.1.1.1' } } as any, makeResponse() as any, next as any);
-
-    expect(next).toHaveBeenCalledTimes(2);
+    expect((await request(app).get('/ping')).status).toBe(200);
+    expect((await request(app).get('/ping')).status).toBe(200);
   });
 
-  it('rejects requests over configured max with retry header', () => {
-    const middleware = createApiRateLimit({ windowMs: 60_000, maxRequests: 1 });
-    const next = vi.fn();
+  it('rejects requests over configured max with retry header and JSON error', async () => {
+    const app = buildApp(60_000, 1);
 
-    middleware({ ip: '2.2.2.2', socket: { remoteAddress: '2.2.2.2' } } as any, makeResponse() as any, next as any);
+    await request(app).get('/ping');
+    const blocked = await request(app).get('/ping');
 
-    const blockedRes = makeResponse();
-    middleware({ ip: '2.2.2.2', socket: { remoteAddress: '2.2.2.2' } } as any, blockedRes as any, next as any);
-
-    expect(next).toHaveBeenCalledTimes(1);
-    expect(blockedRes.statusCode).toBe(429);
-    expect(blockedRes.headers['Retry-After']).toBeDefined();
-    expect(blockedRes.body).toEqual({ error: 'Too many requests' });
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers['retry-after']).toBeDefined();
+    expect(blocked.body).toEqual({ error: 'Too many requests' });
   });
 
-  it('resets count after window elapsed', () => {
-    const middleware = createApiRateLimit({ windowMs: 10, maxRequests: 1 });
-    const next = vi.fn();
+  it('resets count after window elapsed', async () => {
+    const app = buildApp(200, 1);
 
-    const nowSpy = vi.spyOn(Date, 'now');
-    nowSpy.mockReturnValue(1000);
-    middleware({ ip: '3.3.3.3', socket: { remoteAddress: '3.3.3.3' } } as any, makeResponse() as any, next as any);
+    expect((await request(app).get('/ping')).status).toBe(200);
+    expect((await request(app).get('/ping')).status).toBe(429);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect((await request(app).get('/ping')).status).toBe(200);
+  });
 
-    nowSpy.mockReturnValue(1015);
-    middleware({ ip: '3.3.3.3', socket: { remoteAddress: '3.3.3.3' } } as any, makeResponse() as any, next as any);
-
-    expect(next).toHaveBeenCalledTimes(2);
-    nowSpy.mockRestore();
+  it('uses defaults of 180 requests per minute', () => {
+    expect(apiRateLimitOptions()).toMatchObject({ windowMs: 60_000, limit: 180 });
   });
 });
