@@ -1,9 +1,10 @@
 import { Router, type Request, type Response } from 'express';
 import { getAllContainerStats, getHostInfo } from '../services/stats.js';
-import { createApiRateLimit } from '../middleware/apiRateLimit.js';
+import rateLimit from 'express-rate-limit';
+import { apiRateLimitOptions } from '../middleware/apiRateLimit.js';
 
 const router = Router();
-const statsRateLimit = createApiRateLimit({ windowMs: 60_000, maxRequests: 30 });
+const statsRateLimit = rateLimit(apiRateLimitOptions({ windowMs: 60_000, maxRequests: 30 }));
 
 router.use(statsRateLimit);
 
