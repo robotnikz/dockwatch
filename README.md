@@ -35,14 +35,16 @@
 
 ## ✨ Features
 
-* 📦 **Stack Management** — Build, deploy, and manage Docker Compose stacks via a clean, intuitive web UI.
+* 📦 **Stack Management** — Build, deploy, and manage Docker Compose stacks via a clean, intuitive web UI, including each stack's `.env` file.
+* 🕘 **Version History** — Every save keeps the previous `compose.yaml`/`.env` (last 20 per stack), restorable from the editor.
 * 📊 **Live Runtime Dashboard** — Real-time metrics for CPU, Memory, Network, Block I/O, and PIDs at a glance.
-* 🔄 **Smart Updates & Exclusions** — Pull and redeploy stacks with one click. **Exclude specific containers from updates permanently with a simple toggle.**
+* 🔄 **Smart Updates & Exclusions** — Pull and redeploy stacks or single services with one click. Optional scheduled auto-updates recreate only running services with new images. **Exclude specific containers from updates permanently with a simple toggle.**
 * 🎛️ **Visual Resource Limits** — Control CPU and **RAM limits/reservations directly from the UI** without manual YAML editing. Changes sync instantly to your `compose.yml`!
 * 💻 **Live Terminal Streaming** — View Docker Compose logs and process outputs in real-time through a responsive overlay.
 * 🔔 **Discord Notifications** — Stay informed about available updates, automated checks, and stack events via Discord webhooks.
 * 🪄 **Docker Run to Compose** — Instantly transform `docker run` commands into deployable `compose.yml` configurations.
 * 🔐 **Built-in Authentication** — Persistent local account setup on first run, login sessions, logout, and in-app password change.
+* ⬆️ **One-Click Self-Update** — Update DockWatch itself from the sidebar when a new release is out.
 
 ---
 
@@ -91,8 +93,29 @@ services:
 | Variable | Default | Description |
 |---|---|---|
 | `PORT` | `3000` | Web UI port |
-| `DOCKWATCH_DATA` | `/app/data` | Database storage path |
+| `DOCKWATCH_DATA` | `/app/data` | Database and version history storage path |
 | `DOCKWATCH_STACKS` | `/opt/stacks` | Compose stacks directory |
+| `DOCKWATCH_ALLOWED_REGISTRIES` | Docker Hub, ghcr.io, quay.io, lscr.io, mcr.microsoft.com | Comma-separated registry hosts the update checker may contact |
+| `DOCKWATCH_COMPOSE_TIMEOUT_MS` | `1800000` (30 min) | Upper limit for one `docker compose` pull/up/down run before it is stopped |
+| `DOCKWATCH_COMPOSE_ENV_PASSTHROUGH` | – | Comma-separated variables of the DockWatch container that `docker compose` should see (see below) |
+| `DOCKWATCH_SELF_UPDATE_ENABLED` | `true` | Set to `false` to hide the one-click self-update |
+
+### Stack variables (`.env`)
+
+Each stack can have a `.env` file next to its compose file (editable in the `.env` tab). Compose uses it for `${VAR}` substitution. New `.env` files are created with mode `600`.
+
+DockWatch runs `docker compose` with a minimal environment (`PATH`, `HOME`, `TZ`, `DOCKER_*` and proxy variables), so its own variables such as `PORT` never override values from a stack's `.env`. If your stacks rely on a variable set on the DockWatch container, list it in `DOCKWATCH_COMPOSE_ENV_PASSTHROUGH`.
+
+### Updates
+
+- **Update check**: runs on the schedule from *Settings → Update Checker* and once shortly after startup. Startup only checks, it never applies updates. Discord announces each new image version once.
+- **Auto-update** (on by default, toggle in *Settings*): on scheduled runs, services with a new image are pulled and recreated with `docker compose up -d --no-deps <service>`. Only running services are touched; stopped stacks and services stay stopped. Add the label `dockwatch.update.exclude=true` to skip a service, or `dockwatch.update.check.exclude=true` to skip the check entirely.
+- **Manual updates**: *Update All* runs `pull` and then `up -d` for the whole stack (no `down`, so containers keep running if a pull fails). The per-service *Update* button only touches that service.
+- **Private registries**: mount your Docker client config read-only, e.g. `~/.docker/config.json:/root/.docker/config.json:ro`, and add the registry to `DOCKWATCH_ALLOWED_REGISTRIES`. Inline `auths` entries are supported, credential helpers are not.
+
+### Self-update
+
+When DockWatch runs from a compose project with the Docker socket mounted, the sidebar offers *Install update* for new releases. DockWatch then starts a short-lived helper container that runs `docker compose pull` and `up -d` for the DockWatch service, because a container cannot reliably replace itself.
 
 ## 🔐 Authentication
 
