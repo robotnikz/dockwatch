@@ -18,16 +18,28 @@ export interface StackSnapshot {
 }
 
 function historyRoot(): string {
-  return path.join(process.env.DOCKWATCH_DATA || '/app/data', 'history');
+  return path.resolve(process.env.DOCKWATCH_DATA || '/app/data', 'history');
+}
+
+/** Resolve a path below the history root, rejecting anything that would escape it. */
+function insideHistoryRoot(...segments: string[]): string {
+  const root = historyRoot();
+  const resolved = path.resolve(root, ...segments);
+  if (!resolved.startsWith(root + path.sep)) throw new Error('Invalid history path');
+  return resolved;
 }
 
 function historyDir(stackName: string): string {
-  if (!/^[a-zA-Z0-9_-]+$/.test(stackName)) throw new Error(`Invalid stack name: ${stackName}`);
-  return path.join(historyRoot(), stackName);
+  // Same sanitizing as stackDir(): only letters, digits, dash and underscore.
+  const safe = String(stackName).replace(/[^a-zA-Z0-9_-]/g, '');
+  if (!safe || safe !== stackName) throw new Error(`Invalid stack name: ${stackName}`);
+  return insideHistoryRoot(safe);
 }
 
-function assertVersionId(id: string): void {
-  if (!VERSION_ID_PATTERN.test(id)) throw new Error(`Invalid version id: ${id}`);
+function versionFile(stackName: string, id: string, kind: 'compose' | 'env'): string {
+  const safeId = String(id).replace(/[^0-9TZ-]/g, '');
+  if (safeId !== id || !VERSION_ID_PATTERN.test(safeId)) throw new Error(`Invalid version id: ${id}`);
+  return insideHistoryRoot(path.basename(historyDir(stackName)), `${safeId}.${kind}`);
 }
 
 function idToIso(id: string): string {
@@ -62,12 +74,10 @@ export async function listStackHistory(stackName: string): Promise<StackVersion[
 }
 
 export async function getStackHistoryVersion(stackName: string, id: string): Promise<StackSnapshot> {
-  assertVersionId(id);
-  const dir = historyDir(stackName);
-  const content = await fs.readFile(path.join(dir, `${id}.compose`), 'utf-8');
+  const content = await fs.readFile(versionFile(stackName, id, 'compose'), 'utf-8');
   let env: string | null = null;
   try {
-    env = await fs.readFile(path.join(dir, `${id}.env`), 'utf-8');
+    env = await fs.readFile(versionFile(stackName, id, 'env'), 'utf-8');
   } catch (err: any) {
     if (err?.code !== 'ENOENT') throw err;
   }
@@ -91,15 +101,15 @@ export async function snapshotStack(stackName: string, snapshot: StackSnapshot, 
   for (let n = 1; versions.some((v) => v.id === id); n += 1) {
     id = `${newVersionId(now)}-${n}`;
   }
-  await fs.writeFile(path.join(dir, `${id}.compose`), snapshot.content, { encoding: 'utf-8', mode: 0o600 });
+  await fs.writeFile(versionFile(stackName, id, 'compose'), snapshot.content, { encoding: 'utf-8', mode: 0o600 });
   if (snapshot.env !== null) {
-    await fs.writeFile(path.join(dir, `${id}.env`), snapshot.env, { encoding: 'utf-8', mode: 0o600 });
+    await fs.writeFile(versionFile(stackName, id, 'env'), snapshot.env, { encoding: 'utf-8', mode: 0o600 });
   }
 
   const all = await listStackHistory(stackName);
   for (const old of all.slice(MAX_VERSIONS_PER_STACK)) {
-    await fs.rm(path.join(dir, `${old.id}.compose`), { force: true });
-    await fs.rm(path.join(dir, `${old.id}.env`), { force: true });
+    await fs.rm(versionFile(stackName, old.id, 'compose'), { force: true });
+    await fs.rm(versionFile(stackName, old.id, 'env'), { force: true });
   }
 }
 

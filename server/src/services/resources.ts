@@ -267,7 +267,7 @@ export async function updateServiceResources(
     try {
       await snapshotStack(stackName, { content, env: await getEnvContent(stackName) });
     } catch (err) {
-      console.warn(`[Resources] Could not save previous version of ${stackName}:`, err);
+      console.warn('[Resources] Could not save previous version of stack', stackName, err);
     }
   }
   await saveComposeContent(stackName, newContent);
