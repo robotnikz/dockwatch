@@ -62,6 +62,9 @@ export interface StackService {
   Service: string;
   State: string;
   Status: string;
+  Health?: string;
+  ExitCode?: number | null;
+  Image?: string;
 }
 
 export interface Stack {
@@ -72,14 +75,33 @@ export interface Stack {
 
 export interface StackDetail {
   name: string;
+  /** Stack directory on the host, e.g. /opt/stacks/<name>. */
+  path?: string;
   content: string;
-  envContent?: string;
+  /** Content of the stack's .env file, null when the stack has none. */
+  env: string | null;
+  composeFile?: string;
+  /** Other top-level files/folders in the stack directory (deleted together with the stack). */
+  extraFiles?: string[];
+}
+
+export interface StackVersion {
+  id: string;
+  savedAt: string;
+  hasEnv: boolean;
 }
 
 export const getStacks = () => request<Stack[]>('/stacks');
 export const getStack = (name: string) => request<StackDetail>(`/stacks/${name}`);
-export const saveStack = (name: string, content: string, envContent?: string) =>
-  request<{ ok: boolean }>(`/stacks/${name}`, { method: 'PUT', body: JSON.stringify({ content, envContent }) });
+export const saveStack = (name: string, content: string, env: string, options: { create?: boolean } = {}) =>
+  request<{ ok: boolean; warnings?: string[] }>(`/stacks/${name}`, {
+    method: 'PUT',
+    body: JSON.stringify({ content, env, create: options.create === true }),
+  });
+export const getStackHistory = (name: string) =>
+  request<{ versions: StackVersion[] }>(`/stacks/${name}/history`);
+export const getStackHistoryVersion = (name: string, id: string) =>
+  request<{ content: string; env: string | null }>(`/stacks/${name}/history/${encodeURIComponent(id)}`);
 export const deleteStack = (name: string) =>
   request<{ ok: boolean }>(`/stacks/${name}`, { method: 'DELETE' });
 
@@ -104,6 +126,8 @@ export interface UpdateStatus {
   remoteDigest: string | null;
   checked_at: string;
   updateAvailable: boolean;
+  /** The image could not be compared (not pulled locally, registry unreachable or not allowed). */
+  checkFailed?: boolean;
   context?: string;
 }
 
@@ -438,6 +462,7 @@ export interface AppVersionStatus {
   selfUpdate?: {
     enabled: boolean;
     supported: boolean;
+    mode?: 'helper' | 'local' | null;
     workingDir: string;
     composeFile: string | null;
     reason?: string;

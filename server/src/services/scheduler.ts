@@ -1,14 +1,19 @@
 import cron, { type ScheduledTask } from 'node-cron';
-import { checkAllUpdates } from './updateChecker.js';
+import { checkAllUpdates, getStackInterpolationEnv, resolveEnvVars } from './updateChecker.js';
 import { getSetting, insertSchedulerEvent } from '../db.js';
-import { composePullAndRecreate, getComposeContent, listStacks } from './docker.js';
+import { composePullAndRecreate, getComposeContent, hasTrueLabel, listStacks } from './docker.js';
 import { parse } from 'yaml';
-import { notifySchedulerError } from './discord.js';
+import { notifySchedulerError, notifyStackAction } from './discord.js';
 
 let task: ScheduledTask | null = null;
 let isUpdateCycleRunning = false;
 
-async function runUpdateCycle(): Promise<void> {
+/** Auto-update is on unless explicitly disabled in the settings. */
+export function isAutoUpdateEnabled(): boolean {
+  return String(getSetting('auto_update_enabled') ?? 'true').trim().toLowerCase() !== 'false';
+}
+
+export async function runUpdateCycle({ applyUpdates = true }: { applyUpdates?: boolean } = {}): Promise<void> {
   if (isUpdateCycleRunning) {
     console.log('[Scheduler] Previous update cycle still running, skipping this run.');
     return;
@@ -22,6 +27,14 @@ async function runUpdateCycle(): Promise<void> {
     console.log(`[Scheduler] Check complete. ${updates.length} updates available.`);
 
     if (updates.length === 0) return;
+    if (!applyUpdates) {
+      console.log('[Scheduler] Check-only run, not applying updates.');
+      return;
+    }
+    if (!isAutoUpdateEnabled()) {
+      console.log('[Scheduler] Auto-update is disabled in settings, not applying updates.');
+      return;
+    }
 
     const updatedImages = new Set(updates.map((u) => u.image));
     const stacks = await listStacks();
@@ -29,16 +42,22 @@ async function runUpdateCycle(): Promise<void> {
     for (const stack of stacks) {
       try {
         const compose = await getComposeContent(stack);
-        const shouldAutoUpdate = hasAutoUpdateEnabledServiceWithUpdates(compose, updatedImages);
+        const env = await getStackInterpolationEnv(stack);
+        const services = getAutoUpdateServices(compose, updatedImages, env);
 
-        if (!shouldAutoUpdate) {
+        if (services.length === 0) {
           console.log(`[Scheduler] No auto-update candidates in stack ${stack}.`);
           continue;
         }
 
-        console.log(`[Scheduler] Applying auto-updates for stack ${stack}...`);
-        await composePullAndRecreate(stack);
+        console.log(`[Scheduler] Applying auto-updates for stack ${stack} (${services.join(', ')})...`);
+        const output = await composePullAndRecreate(stack, services);
+        if (output.includes('No running, non-excluded services to update.')) {
+          console.log(`[Scheduler] Nothing to update in stack ${stack}: affected services are not running.`);
+          continue;
+        }
         console.log(`[Scheduler] Auto-update complete for stack ${stack}.`);
+        await notifyStackAction(stack, `auto-updated (${services.join(', ')})`, true);
       } catch (stackErr) {
         console.error(`[Scheduler] Auto-update failed for stack ${stack}:`, stackErr);
         const message = stackErr instanceof Error ? stackErr.message : String(stackErr);
@@ -56,42 +75,40 @@ async function runUpdateCycle(): Promise<void> {
   }
 }
 
-function isTrueLabel(value: unknown): boolean {
-  return String(value).trim().toLowerCase() === 'true';
+/**
+ * Services of a stack whose (variable-resolved) image has an update and that are not
+ * excluded from auto-update via the `dockwatch.update.exclude` label.
+ */
+export function getAutoUpdateServices(
+  composeContent: string,
+  updatedImages: Set<string>,
+  env: Record<string, string> = {},
+): string[] {
+  try {
+    const doc = parse(composeContent) as any;
+    const services = doc?.services;
+    if (!services || typeof services !== 'object') return [];
+
+    const result: string[] = [];
+    for (const [serviceName, serviceConfig] of Object.entries(services)) {
+      const service = serviceConfig as any;
+      const image = typeof service?.image === 'string' ? resolveEnvVars(service.image, env).trim() : '';
+      if (!image || !updatedImages.has(image)) continue;
+      if (hasTrueLabel(service?.labels, 'dockwatch.update.exclude')) continue;
+      result.push(serviceName);
+    }
+    return result;
+  } catch {
+    return [];
+  }
 }
 
 export function hasAutoUpdateEnabledServiceWithUpdates(
   composeContent: string,
-  updatedImages: Set<string>
+  updatedImages: Set<string>,
+  env: Record<string, string> = {},
 ): boolean {
-  try {
-    const doc = parse(composeContent) as any;
-    const services = doc?.services;
-    if (!services || typeof services !== 'object') return false;
-
-    for (const serviceConfig of Object.values(services)) {
-      const service = serviceConfig as any;
-      const image = service?.image;
-      if (!image || !updatedImages.has(String(image))) continue;
-
-      const labels = service?.labels;
-      const autoExcluded = Array.isArray(labels)
-        ? labels.some((l: unknown) => {
-            if (typeof l !== 'string') return false;
-            const [k, v] = l.split('=');
-            return k === 'dockwatch.update.exclude' && isTrueLabel(v);
-          })
-        : (labels && typeof labels === 'object'
-          ? isTrueLabel((labels as Record<string, unknown>)['dockwatch.update.exclude'])
-          : false);
-
-      if (!autoExcluded) return true;
-    }
-  } catch {
-    return false;
-  }
-
-  return false;
+  return getAutoUpdateServices(composeContent, updatedImages, env).length > 0;
 }
 
 export function startScheduler(): void {
@@ -109,9 +126,6 @@ export function startScheduler(): void {
   });
 
   console.log(`[Scheduler] Started with cron: ${cronExpr}`);
-
-  // Populate cache shortly after startup instead of waiting for the first cron window.
-  void runUpdateCycle();
 }
 
 export function stopScheduler(): void {
@@ -123,4 +137,13 @@ export function stopScheduler(): void {
 
 export function restartScheduler(): void {
   startScheduler();
+}
+
+/**
+ * Populate the update cache shortly after startup instead of waiting for the first cron
+ * window. Startup never applies updates: a container restart (host reboot, DockWatch
+ * update) must not recreate other stacks as a side effect.
+ */
+export function runStartupUpdateCheck(): void {
+  void runUpdateCycle({ applyUpdates: false });
 }

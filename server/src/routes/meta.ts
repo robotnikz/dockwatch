@@ -15,16 +15,16 @@ router.get('/version', async (req: Request, res: Response) => {
   try {
     const force = String(req.query.force || '').toLowerCase() === 'true';
     const status = await getAppVersionStatus(force);
-    const selfUpdate = getSelfUpdateInfo();
+    const selfUpdate = await getSelfUpdateInfo();
     res.json({ ...status, selfUpdate });
   } catch (err: any) {
     res.status(500).json({ error: err.message || 'Failed to get app version status' });
   }
 });
 
-router.post('/self-update', selfUpdateRateLimit, (_req: Request, res: Response) => {
+router.post('/self-update', selfUpdateRateLimit, async (_req: Request, res: Response) => {
   try {
-    const result = triggerSelfUpdate();
+    const result = await triggerSelfUpdate();
     res.json(result);
   } catch (err: any) {
     res.status(400).json({ error: err.message || 'Failed to trigger self update' });

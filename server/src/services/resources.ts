@@ -1,5 +1,6 @@
-import { parse, stringify } from 'yaml';
-import { getComposeContent, saveComposeContent } from './docker.js';
+import { parse, parseDocument, isMap, isSeq, isScalar, type Document, type YAMLMap } from 'yaml';
+import { getComposeContent, getEnvContent, saveComposeContent } from './docker.js';
+import { snapshotStack } from './stackHistory.js';
 
 export interface ResourceConfig {
   limits_cpus?: string;
@@ -82,24 +83,6 @@ function cleanupEmptyObject(target: Record<string, unknown>, key: string): void 
   }
 }
 
-function getService(doc: any, serviceName: string): ComposeService {
-  ensureSafeKey(serviceName, 'service name');
-  if (!doc?.services || typeof doc.services !== 'object' || !hasOwn(doc.services, serviceName)) {
-    throw new Error(`Service "${serviceName}" not found in compose file`);
-  }
-
-  const service = (doc.services as Record<string, unknown>)[serviceName];
-  if (!service || typeof service !== 'object') {
-    throw new Error(`Service "${serviceName}" not found in compose file`);
-  }
-
-  // Work on a safe clone to avoid mutating tainted/plain objects from YAML parser.
-  const safeService = JSON.parse(JSON.stringify(sanitizeParsedValue(service))) as ComposeService;
-  (doc.services as Record<string, unknown>)[serviceName] = safeService;
-
-  return safeService;
-}
-
 function getResourcesFromDoc(doc: any, serviceName: string): ResourceConfig {
   if (!isSafeKey(serviceName)) return {};
   const services = doc?.services;
@@ -149,42 +132,6 @@ function isUpdateExcluded(labels: unknown): boolean {
   return false;
 }
 
-function setUpdateExcludedLabel(service: ComposeService, excluded: boolean): void {
-  const labels = service.labels;
-  const key = 'dockwatch.update.exclude';
-
-  if (Array.isArray(labels)) {
-    const filtered = labels.filter((entry: unknown) => {
-      return !(typeof entry === 'string' && entry.startsWith(`${key}=`));
-    });
-    if (excluded) filtered.push(`${key}=true`);
-    if (filtered.length > 0) service.labels = filtered;
-    else delete service.labels;
-    return;
-  }
-
-  if (labels && typeof labels === 'object') {
-    const source = labels as Record<string, unknown>;
-      const safeEntries = Object.entries(source)
-        .filter(([entryKey]) => isSafeKey(entryKey) && entryKey !== 'dockwatch.update.exclude')
-      .map(([entryKey, entryValue]) => [entryKey, String(entryValue)] as const);
-
-    const mapLabels = Object.fromEntries(safeEntries) as Record<string, string>;
-      if (excluded) mapLabels['dockwatch.update.exclude'] = 'true';
-    if (Object.keys(mapLabels).length === 0) delete service.labels;
-    else service.labels = mapLabels;
-    return;
-  }
-
-  if (excluded) {
-    const mapLabels = createSafeRecord<string>();
-    mapLabels['dockwatch.update.exclude'] = 'true';
-    service.labels = mapLabels;
-  } else {
-    delete service.labels;
-  }
-}
-
 function isUpdateCheckExcluded(labels: unknown): boolean {
   if (!labels) return false;
   if (Array.isArray(labels)) {
@@ -201,40 +148,48 @@ function isUpdateCheckExcluded(labels: unknown): boolean {
   return false;
 }
 
-function setUpdateCheckExcludedLabel(service: ComposeService, excluded: boolean): void {
-  const labels = service.labels;
-  const key = 'dockwatch.update.check.exclude';
+/**
+ * Add or remove a `key=true` label on a service node, keeping the label syntax (list or
+ * map) and every other label untouched.
+ */
+function setBooleanLabel(doc: Document, service: YAMLMap, key: string, enabled: boolean): void {
+  const labels = service.get('labels', true);
 
-  if (Array.isArray(labels)) {
-    const filtered = labels.filter((entry: unknown) => {
-      return !(typeof entry === 'string' && entry.startsWith(`${key}=`));
+  if (isSeq(labels)) {
+    labels.items = labels.items.filter((item) => {
+      const value = isScalar(item) ? item.value : item;
+      return !(typeof value === 'string' && value.trim().startsWith(`${key}=`));
     });
-    if (excluded) filtered.push(`${key}=true`);
-    if (filtered.length > 0) service.labels = filtered;
-    else delete service.labels;
+    if (enabled) labels.add(`${key}=true`);
+    if (labels.items.length === 0) service.delete('labels');
     return;
   }
 
-  if (labels && typeof labels === 'object') {
-    const source = labels as Record<string, unknown>;
-      const safeEntries = Object.entries(source)
-        .filter(([entryKey]) => isSafeKey(entryKey) && entryKey !== 'dockwatch.update.check.exclude')
-      .map(([entryKey, entryValue]) => [entryKey, String(entryValue)] as const);
-
-    const mapLabels = Object.fromEntries(safeEntries) as Record<string, string>;
-      if (excluded) mapLabels['dockwatch.update.check.exclude'] = 'true';
-    if (Object.keys(mapLabels).length === 0) delete service.labels;
-    else service.labels = mapLabels;
+  if (isMap(labels)) {
+    labels.delete(key);
+    if (enabled) labels.set(key, 'true');
+    if (labels.items.length === 0) service.delete('labels');
     return;
   }
 
-  if (excluded) {
-    const mapLabels = createSafeRecord<string>();
-    mapLabels['dockwatch.update.check.exclude'] = 'true';
-    service.labels = mapLabels;
-  } else {
-    delete service.labels;
+  if (enabled) {
+    service.set('labels', doc.createNode({ [key]: 'true' }));
+  } else if (labels === null || isScalar(labels)) {
+    service.delete('labels');
   }
+}
+
+function setOrDelete(doc: Document, path: string[], value: string | undefined): void {
+  if (value) {
+    doc.setIn(path, value);
+  } else if (doc.hasIn(path)) {
+    doc.deleteIn(path);
+  }
+}
+
+function deleteIfEmptyMap(doc: Document, path: string[]): void {
+  const node = doc.getIn(path, true);
+  if (isMap(node) && node.items.length === 0) doc.deleteIn(path);
 }
 
 /** Get current resource config for a specific service in a stack */
@@ -243,72 +198,46 @@ export function getResourcesFromYaml(yamlContent: string, serviceName: string): 
   return getResourcesFromDoc(doc, serviceName);
 }
 
-/** Update resources for a service, returns the new YAML content */
+/**
+ * Update resources for a service, returns the new YAML content. Edits the YAML document
+ * in place, so comments, ordering and formatting of untouched parts are preserved.
+ */
 export function setResourcesInYaml(yamlContent: string, serviceName: string, config: ResourceConfig): string {
-  const doc = parseSafeYaml(yamlContent);
-  const service = getService(doc, serviceName);
+  ensureSafeKey(serviceName, 'service name');
+  const doc = parseDocument(yamlContent);
+  if (doc.errors.length > 0) {
+    throw new Error(`Invalid YAML: ${doc.errors[0].message}`);
+  }
+
+  const service = doc.getIn(['services', serviceName], true);
+  if (!isMap(service)) {
+    throw new Error(`Service "${serviceName}" not found in compose file`);
+  }
   const normalized = normalizeConfig(config);
+  const svc = ['services', serviceName];
 
   // Update-exclusion is represented as compose label.
-  setUpdateExcludedLabel(service, Boolean(normalized.update_excluded));
-  setUpdateCheckExcludedLabel(service, Boolean(normalized.update_check_excluded));
+  setBooleanLabel(doc, service, 'dockwatch.update.exclude', Boolean(normalized.update_excluded));
+  setBooleanLabel(doc, service, 'dockwatch.update.check.exclude', Boolean(normalized.update_check_excluded));
 
-  // Build the deploy.resources structure
-  if (!service.deploy) service.deploy = {};
-  if (!service.deploy.resources) service.deploy.resources = {};
-
-  // Limits
-  if (normalized.limits_cpus || normalized.limits_memory) {
-    if (!service.deploy.resources.limits) service.deploy.resources.limits = {};
-    if (normalized.limits_cpus) {
-      service.deploy.resources.limits.cpus = normalized.limits_cpus;
-      service.cpus = normalized.limits_cpus;
-    } else {
-      delete service.deploy.resources.limits.cpus;
-      delete service.cpus;
-    }
-    if (normalized.limits_memory) {
-      service.deploy.resources.limits.memory = normalized.limits_memory;
-      service.mem_limit = normalized.limits_memory;
-    } else {
-      delete service.deploy.resources.limits.memory;
-      delete service.mem_limit;
-    }
-  } else {
-    delete service.deploy.resources.limits;
-    delete service.cpus;
-    delete service.mem_limit;
-  }
-
-  cleanupEmptyObject(service.deploy.resources, 'limits');
+  // Limits (deploy.resources plus the compatible service-level fields)
+  setOrDelete(doc, [...svc, 'deploy', 'resources', 'limits', 'cpus'], normalized.limits_cpus);
+  setOrDelete(doc, [...svc, 'cpus'], normalized.limits_cpus);
+  setOrDelete(doc, [...svc, 'deploy', 'resources', 'limits', 'memory'], normalized.limits_memory);
+  setOrDelete(doc, [...svc, 'mem_limit'], normalized.limits_memory);
 
   // Reservations
-  if (normalized.reservations_cpus || normalized.reservations_memory) {
-    if (!service.deploy.resources.reservations) service.deploy.resources.reservations = {};
-    if (normalized.reservations_cpus) {
-      service.deploy.resources.reservations.cpus = normalized.reservations_cpus;
-    } else {
-      delete service.deploy.resources.reservations.cpus;
-    }
-    if (normalized.reservations_memory) {
-      service.deploy.resources.reservations.memory = normalized.reservations_memory;
-      service.mem_reservation = normalized.reservations_memory;
-    } else {
-      delete service.deploy.resources.reservations.memory;
-      delete service.mem_reservation;
-    }
-  } else {
-    delete service.deploy.resources.reservations;
-    delete service.mem_reservation;
-  }
-
-  cleanupEmptyObject(service.deploy.resources, 'reservations');
+  setOrDelete(doc, [...svc, 'deploy', 'resources', 'reservations', 'cpus'], normalized.reservations_cpus);
+  setOrDelete(doc, [...svc, 'deploy', 'resources', 'reservations', 'memory'], normalized.reservations_memory);
+  setOrDelete(doc, [...svc, 'mem_reservation'], normalized.reservations_memory);
 
   // Clean up empty objects
-  cleanupEmptyObject(service.deploy, 'resources');
-  cleanupEmptyObject(service, 'deploy');
+  deleteIfEmptyMap(doc, [...svc, 'deploy', 'resources', 'limits']);
+  deleteIfEmptyMap(doc, [...svc, 'deploy', 'resources', 'reservations']);
+  deleteIfEmptyMap(doc, [...svc, 'deploy', 'resources']);
+  deleteIfEmptyMap(doc, [...svc, 'deploy']);
 
-  return stringify(doc, { lineWidth: 0 });
+  return doc.toString({ lineWidth: 0 });
 }
 
 /** Get all services and their resource configs for a stack */
@@ -334,6 +263,13 @@ export async function updateServiceResources(
 ): Promise<string> {
   const content = await getComposeContent(stackName);
   const newContent = setResourcesInYaml(content, serviceName, config);
+  if (newContent !== content) {
+    try {
+      await snapshotStack(stackName, { content, env: await getEnvContent(stackName) });
+    } catch (err) {
+      console.warn(`[Resources] Could not save previous version of ${stackName}:`, err);
+    }
+  }
   await saveComposeContent(stackName, newContent);
   return newContent;
 }

@@ -123,7 +123,7 @@ describe('resources service', () => {
     expect(getResourcesFromYaml(BASE_YAML, '__proto__')).toEqual({});
   });
 
-  it('drops forbidden label keys while preserving safe keys', () => {
+  it('edits labels in place without touching other keys or polluting prototypes', () => {
     const yaml = `services:
   app:
     image: nginx:latest
@@ -139,12 +139,59 @@ describe('resources service', () => {
       update_check_excluded: true,
     });
 
-    expect(out).toContain('keep:');
-    expect(out).not.toContain('constructor:');
-    expect(out).not.toContain('prototype:');
-    expect(out).not.toContain('__proto__:');
+    expect(out).toContain('keep: "yes"');
+    expect(out).toContain('constructor: bad');
+    expect(out).toContain('__proto__: bad');
     expect(out).toContain('dockwatch.update.exclude: "true"');
     expect(out).toContain('dockwatch.update.check.exclude: "true"');
+    expect(({} as Record<string, unknown>).bad).toBeUndefined();
+    expect(Object.prototype).not.toHaveProperty('keep');
+  });
+
+  it('preserves comments, ordering and unrelated services', () => {
+    const yaml = `# Media stack
+services:
+  # main app
+  app:
+    image: nginx:latest # pinned later
+    ports:
+      - "8080:80"
+  db:
+    image: postgres:16 # database
+`;
+
+    const out = setResourcesInYaml(yaml, 'app', { limits_memory: '512m' });
+
+    expect(out.startsWith('# Media stack\n')).toBe(true);
+    expect(out).toContain('  # main app\n  app:');
+    expect(out).toContain('image: nginx:latest # pinned later');
+    expect(out).toContain('image: postgres:16 # database');
+    expect(out).toContain('mem_limit: 512m');
+    expect(out.indexOf('app:')).toBeLessThan(out.indexOf('db:'));
+
+    const cleared = setResourcesInYaml(out, 'app', {});
+    expect(cleared).not.toContain('deploy:');
+    expect(cleared).not.toContain('mem_limit');
+    expect(cleared).toContain('image: nginx:latest # pinned later');
+  });
+
+  it('rejects invalid YAML instead of overwriting it', () => {
+    expect(() => setResourcesInYaml('services: [unclosed', 'app', {})).toThrow('Invalid YAML');
+  });
+
+  it('updates list-style labels without dropping other entries', () => {
+    const yaml = `services:
+  app:
+    image: nginx:latest
+    labels:
+      - com.example.keep=true
+      - dockwatch.update.exclude=true
+`;
+
+    const enabled = setResourcesInYaml(yaml, 'app', { update_check_excluded: true });
+    expect(enabled).toContain('- com.example.keep=true');
+    expect(enabled).toContain('- dockwatch.update.check.exclude=true');
+    expect(enabled).not.toContain('dockwatch.update.exclude=true');
   });
 
   it('returns empty config for missing services', () => {

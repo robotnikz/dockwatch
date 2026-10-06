@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { getStacks, getAppVersionStatus, type AppVersionStatus, type Stack } from '../api';
+import { getStacks, getAppVersionStatus, triggerSelfUpdate, type AppVersionStatus, type Stack } from '../api';
+import ConfirmModal from './ConfirmModal';
 
 export default function Sidebar({
   authEnabled,
@@ -22,6 +23,9 @@ export default function Sidebar({
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [authBusy, setAuthBusy] = useState(false);
   const [authMessage, setAuthMessage] = useState<{ tone: 'success' | 'error'; text: string } | null>(null);
+  const [selfUpdateConfirm, setSelfUpdateConfirm] = useState(false);
+  const [selfUpdateRunning, setSelfUpdateRunning] = useState(false);
+  const [selfUpdateError, setSelfUpdateError] = useState('');
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -49,6 +53,40 @@ export default function Sidebar({
     const id = setInterval(() => fetchAppVersion(false), 60 * 60 * 1000); // hourly check
     return () => clearInterval(id);
   }, []);
+
+  const startSelfUpdate = async () => {
+    setSelfUpdateConfirm(false);
+    setSelfUpdateRunning(true);
+    setSelfUpdateError('');
+    try {
+      const { reloadAfterSeconds } = await triggerSelfUpdate();
+      // Wait until the new container answers, then reload to load the new UI.
+      const startedAt = Date.now();
+      const deadline = startedAt + Math.max(reloadAfterSeconds, 10) * 6 * 1000;
+      let sawDowntime = false;
+      const poll = async () => {
+        try {
+          const res = await fetch('/api/health', { cache: 'no-store' });
+          if (!res.ok) sawDowntime = true;
+          else if (sawDowntime || Date.now() - startedAt > reloadAfterSeconds * 1000) {
+            window.location.reload();
+            return;
+          }
+        } catch {
+          sawDowntime = true;
+        }
+        if (Date.now() > deadline) {
+          window.location.reload();
+          return;
+        }
+        setTimeout(poll, 3000);
+      };
+      setTimeout(poll, 5000);
+    } catch (err: any) {
+      setSelfUpdateRunning(false);
+      setSelfUpdateError(err?.message || 'Self-update failed');
+    }
+  };
 
   const filteredStacks = stacks.filter((s) => s.name.toLowerCase().includes(search.toLowerCase()));
 
@@ -175,6 +213,21 @@ export default function Sidebar({
           {appVersion?.latestVersion && appVersion.updateAvailable ? (
             <div className="mt-1 space-y-1">
               <div className="text-xs text-dock-muted">Latest: v{appVersion.latestVersion}</div>
+              {appVersion.selfUpdate?.supported ? (
+                <button
+                  type="button"
+                  onClick={() => setSelfUpdateConfirm(true)}
+                  disabled={selfUpdateRunning}
+                  className="mt-1 w-full rounded-lg bg-amber-500/20 px-3 py-1.5 text-xs font-semibold text-amber-200 transition hover:bg-amber-500/30 disabled:opacity-60"
+                >
+                  {selfUpdateRunning ? 'Updating, page reloads automatically...' : 'Install update'}
+                </button>
+              ) : appVersion.selfUpdate?.reason ? (
+                <div className="text-[11px] text-dock-muted" title={appVersion.selfUpdate.reason}>
+                  Update with <code>docker compose pull && docker compose up -d</code>
+                </div>
+              ) : null}
+              {selfUpdateError ? <div className="text-[11px] text-rose-300">{selfUpdateError}</div> : null}
             </div>
           ) : null}
           <a
@@ -284,6 +337,15 @@ export default function Sidebar({
         ) : null}
       </div>
 
+      <ConfirmModal
+        isOpen={selfUpdateConfirm}
+        title="Update DockWatch"
+        message={`Pull v${appVersion?.latestVersion ?? 'latest'} and restart DockWatch? The UI is unavailable for a few seconds; your stacks keep running.`}
+        confirmLabel="Update now"
+        confirmTone="primary"
+        onCancel={() => setSelfUpdateConfirm(false)}
+        onConfirm={startSelfUpdate}
+      />
     </aside>
   );
 }

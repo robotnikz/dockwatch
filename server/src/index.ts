@@ -2,7 +2,7 @@ import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 
 import { createApp } from './app.js';
-import { startScheduler } from './services/scheduler.js';
+import { runStartupUpdateCheck, startScheduler } from './services/scheduler.js';
 import { startCleanupScheduler } from './services/cleanupScheduler.js';
 import { startStatusMonitor } from './services/statusMonitor.js';
 import { ensureStacksDir } from './services/docker.js';
@@ -17,6 +17,7 @@ async function main() {
   }
 
   startScheduler();
+  runStartupUpdateCheck();
   startCleanupScheduler();
   startStatusMonitor();
 

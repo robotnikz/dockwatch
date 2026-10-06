@@ -38,6 +38,14 @@ const tableInfo = db.prepare("PRAGMA table_info(update_cache)").all() as any[];
 if (!tableInfo.some(col => col.name === 'context')) {
   db.exec("ALTER TABLE update_cache ADD COLUMN context TEXT;");
 }
+// update_available: result of the last check (NULL = could not be checked).
+// notified_digest: remote digest already announced via Discord, to avoid repeats.
+if (!tableInfo.some(col => col.name === 'update_available')) {
+  db.exec("ALTER TABLE update_cache ADD COLUMN update_available INTEGER;");
+}
+if (!tableInfo.some(col => col.name === 'notified_digest')) {
+  db.exec("ALTER TABLE update_cache ADD COLUMN notified_digest TEXT;");
+}
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS cleanup_runs (
@@ -106,19 +114,57 @@ export function getStacks(): { name: string; path: string }[] {
   return db.prepare('SELECT name, path FROM stacks ORDER BY name').all() as { name: string; path: string }[];
 }
 
-export function setUpdateCache(image: string, localDigest: string | null, remoteDigest: string | null, context?: string): void {
+export interface UpdateCacheRow {
+  image: string;
+  local_digest: string | null;
+  remote_digest: string | null;
+  context: string | null;
+  checked_at: string;
+  update_available: number | null;
+  notified_digest: string | null;
+}
+
+export function setUpdateCache(
+  image: string,
+  localDigest: string | null,
+  remoteDigest: string | null,
+  context?: string,
+  updateAvailable?: boolean | null,
+): void {
+  const available = updateAvailable === undefined || updateAvailable === null ? null : (updateAvailable ? 1 : 0);
   db.prepare(
-    `INSERT OR REPLACE INTO update_cache (image, local_digest, remote_digest, context, checked_at)
-     VALUES (?, ?, ?, ?, datetime('now'))`
-  ).run(image, localDigest, remoteDigest, context || null);
+    `INSERT INTO update_cache (image, local_digest, remote_digest, context, update_available, checked_at)
+     VALUES (?, ?, ?, ?, ?, datetime('now'))
+     ON CONFLICT(image) DO UPDATE SET
+       local_digest = excluded.local_digest,
+       remote_digest = excluded.remote_digest,
+       context = excluded.context,
+       update_available = excluded.update_available,
+       checked_at = excluded.checked_at`
+  ).run(image, localDigest, remoteDigest, context || null, available);
 }
 
-export function getUpdateCache(image: string): { local_digest: string | null; remote_digest: string | null; context: string | null; checked_at: string } | undefined {
-  return db.prepare('SELECT local_digest, remote_digest, context, checked_at FROM update_cache WHERE image = ?').get(image) as any;
+export function getUpdateCache(image: string): UpdateCacheRow | undefined {
+  return db.prepare('SELECT * FROM update_cache WHERE image = ?').get(image) as UpdateCacheRow | undefined;
 }
 
-export function getAllUpdateCache(): { image: string; local_digest: string | null; remote_digest: string | null; context: string | null; checked_at: string }[] {
-  return db.prepare('SELECT * FROM update_cache ORDER BY image').all() as any[];
+export function getAllUpdateCache(): UpdateCacheRow[] {
+  return db.prepare('SELECT * FROM update_cache ORDER BY image').all() as UpdateCacheRow[];
+}
+
+export function markUpdateNotified(image: string, remoteDigest: string): void {
+  db.prepare('UPDATE update_cache SET notified_digest = ? WHERE image = ?').run(remoteDigest, image);
+}
+
+/** Remove cache rows for images that are no longer used (or checked) by any stack. */
+export function pruneUpdateCache(keepImages: string[]): number {
+  const keep = new Set(keepImages);
+  const stale = (db.prepare('SELECT image FROM update_cache').all() as { image: string }[])
+    .map((row) => row.image)
+    .filter((image) => !keep.has(image));
+  const remove = db.prepare('DELETE FROM update_cache WHERE image = ?');
+  db.transaction(() => stale.forEach((image) => remove.run(image)))();
+  return stale.length;
 }
 
 export interface CleanupRunRecord {

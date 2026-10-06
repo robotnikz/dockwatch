@@ -18,11 +18,11 @@ async function getDetailedStatus(): Promise<Map<string, { status: string; health
     ], { timeout: 10_000 });
 
     stdout.trim().split('\n').filter(Boolean).forEach(line => {
-      const [name, state, statusStr] = line.split('\t');
+      const [name, state, statusStr = ''] = line.split('\t');
       let health = '';
       if (statusStr.includes('(healthy)')) health = 'healthy';
       else if (statusStr.includes('(unhealthy)')) health = 'unhealthy';
-      else if (statusStr.includes('(starting)')) health = 'starting';
+      else if (statusStr.includes('(health: starting)') || statusStr.includes('(starting)')) health = 'starting';
 
       states.set(name, { status: state || 'unknown', health });
     });

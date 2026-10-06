@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { getStack, getStacks, saveStack, deleteStack, stackUp, stackDown, stackRestart, stackUpdate, stackLogs, getUpdates, streamStackAction, streamStackServiceUpdate, type Stack, type UpdateStatus } from '../api';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { getStack, getStacks, saveStack, deleteStack, stackLogs, getUpdates, getStackHistory, getStackHistoryVersion, streamStackAction, streamStackServiceUpdate, type Stack, type StackService, type StackVersion, type UpdateStatus } from '../api';
 import { AnsiUp } from 'ansi_up';
 import { parseDocument } from 'yaml';
 import ServiceConfigurator from '../components/ServiceConfigurator';
 import ConfirmModal from '../components/ConfirmModal';
+import AppModal from '../components/AppModal';
 
 const ansiUp = new AnsiUp();
 
@@ -135,14 +136,48 @@ function highlightYaml(input: string): string {
     .join('\n');
 }
 
+/** Update-cache contexts look like "stack/service, other/service". */
+function contextIncludes(context: string | undefined, stackName: string, serviceName: string): boolean {
+  return (context || '').split(',').map((entry) => entry.trim()).includes(`${stackName}/${serviceName}`);
+}
+
+function serviceStateLabel(svc: StackService): string {
+  if (svc.State === 'exited' && svc.ExitCode != null) return `exited (${svc.ExitCode})`;
+  return svc.State;
+}
+
+function serviceStateClasses(svc: StackService): string {
+  if (svc.State === 'running') return 'bg-dock-accent/20 text-dock-accent';
+  if (svc.State === 'exited' && svc.ExitCode === 0) return 'bg-dock-border/50 text-dock-muted';
+  return 'bg-dock-red/15 text-dock-red';
+}
+
+const healthClasses: Record<string, string> = {
+  healthy: 'bg-dock-green/15 text-dock-green',
+  unhealthy: 'bg-dock-red/15 text-dock-red',
+  starting: 'bg-dock-yellow/15 text-dock-yellow',
+};
+
 export default function StackEditor() {
   const { name } = useParams<{ name: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const isNew = !name;
 
   const [stackName, setStackName] = useState('');
   const [content, setContent] = useState(TEMPLATE);
   const [envContent, setEnvContent] = useState('');
+  const [composeFileName, setComposeFileName] = useState('compose.yaml');
+  const [extraFiles, setExtraFiles] = useState<string[]>([]);
+  const [stackPath, setStackPath] = useState('');
+  // Editing an existing stack is only allowed after its files were loaded, so a failed
+  // load can never lead to saving the template (or an empty .env) over the real files.
+  const [filesLoaded, setFilesLoaded] = useState(false);
+  const [saveWarnings, setSaveWarnings] = useState<string[]>([]);
+  const [notice, setNotice] = useState('');
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyVersions, setHistoryVersions] = useState<StackVersion[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'compose.yaml' | '.env'>('compose.yaml');
   const [stackData, setStackData] = useState<Stack | null>(null);
   const [updates, setUpdates] = useState<UpdateStatus[]>([]);
@@ -194,7 +229,11 @@ export default function StackEditor() {
         getUpdates()
       ]);
       setContent(detail.content);
-      setEnvContent(detail.envContent || '');
+      setEnvContent(detail.env ?? '');
+      setComposeFileName(detail.composeFile || 'compose.yaml');
+      setExtraFiles(detail.extraFiles ?? []);
+      setStackPath(detail.path || '');
+      setFilesLoaded(true);
       const found = allStacks.find(s => s.name === name);
       if (found) setStackData(found);
       setUpdates(allUpdates);
@@ -216,6 +255,11 @@ export default function StackEditor() {
   };
 
   useEffect(() => {
+    setNotice('');
+    setHistoryOpen(false);
+    const navigationWarnings = (location.state as { warnings?: string[] } | null)?.warnings;
+    setSaveWarnings(Array.isArray(navigationWarnings) ? navigationWarnings : []);
+    setFilesLoaded(false);
     if (name) {
       setLoading(true);
       setIsEditing(false);
@@ -239,6 +283,8 @@ export default function StackEditor() {
       setLogs('');
       setError('');
       setEnvContent('');
+      setComposeFileName('compose.yaml');
+      setExtraFiles([]);
       setActiveTab('compose.yaml');
       const prefill = sessionStorage.getItem('dockwatch_prefill');
       if (prefill) {
@@ -419,6 +465,10 @@ export default function StackEditor() {
   };
 
   const handleSave = async () => {
+    if (!isNew && !filesLoaded) {
+      setError('The stack files could not be loaded, so saving is disabled. Reload the page and try again.');
+      return;
+    }
     const nextName = stackName.trim();
     if (!nextName) {
       setError('Stack name is required');
@@ -430,12 +480,16 @@ export default function StackEditor() {
     }
     setActionLoading('save');
     setError('');
+    setNotice('');
+    setSaveWarnings([]);
     try {
-      await saveStack(nextName, content, envContent);
+      const result = await saveStack(nextName, content, envContent, { create: isNew });
+      const warnings = result.warnings ?? [];
       window.dispatchEvent(new CustomEvent('dockwatch:stacks-changed'));
       if (isNew) {
-        navigate(`/stack/${nextName}`);
+        navigate(`/stack/${nextName}`, { state: { warnings } });
       } else {
+        setSaveWarnings(warnings);
         setIsEditing(false);
         await fetchStackInfo();
       }
@@ -443,6 +497,38 @@ export default function StackEditor() {
       setError(err.message);
     } finally {
       setActionLoading(null);
+    }
+  };
+
+  const openHistory = async () => {
+    if (!name) return;
+    setHistoryOpen(true);
+    setHistoryLoading(true);
+    try {
+      const res = await getStackHistory(name);
+      setHistoryVersions(res.versions);
+    } catch (err: any) {
+      setError(err.message);
+      setHistoryOpen(false);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
+
+  const loadHistoryVersion = async (version: StackVersion) => {
+    if (!name) return;
+    setHistoryLoading(true);
+    try {
+      const snapshot = await getStackHistoryVersion(name, version.id);
+      setContent(snapshot.content);
+      setEnvContent(snapshot.env ?? '');
+      setIsEditing(true);
+      setHistoryOpen(false);
+      setNotice(`Loaded the version from ${new Date(version.savedAt).toLocaleString()}. Review it and click Save to restore it.`);
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setHistoryLoading(false);
     }
   };
 
@@ -497,14 +583,27 @@ export default function StackEditor() {
                 {actionLoading === 'save' ? (isNew ? 'Creating...' : 'Saving...') : (isNew ? 'Create Stack' : 'Save')}
               </button>
               {!isNew && (
-                <button onClick={() => setIsEditing(false)} disabled={!!actionLoading} className="rounded-xl bg-dock-panel px-4 py-2 text-sm font-bold text-white transition hover:bg-dock-border disabled:opacity-50">
+                <button
+                  onClick={() => {
+                    setIsEditing(false);
+                    setNotice('');
+                    fetchStackInfo();
+                  }}
+                  disabled={!!actionLoading}
+                  className="rounded-xl bg-dock-panel px-4 py-2 text-sm font-bold text-white transition hover:bg-dock-border disabled:opacity-50"
+                >
                   Cancel
+                </button>
+              )}
+              {!isNew && (
+                <button onClick={openHistory} disabled={!!actionLoading} className="rounded-xl bg-dock-panel px-4 py-2 text-sm font-bold text-white transition hover:bg-dock-border disabled:opacity-50">
+                  History
                 </button>
               )}
             </>
           ) : (
             <>
-              <button onClick={() => setIsEditing(true)} className="flex items-center gap-2 rounded-xl bg-dock-panel px-4 py-2 text-sm font-bold text-white transition hover:bg-dock-border">
+              <button onClick={() => setIsEditing(true)} disabled={!filesLoaded} title={filesLoaded ? undefined : 'Stack files could not be loaded'} className="flex items-center gap-2 rounded-xl bg-dock-panel px-4 py-2 text-sm font-bold text-white transition hover:bg-dock-border disabled:cursor-not-allowed disabled:opacity-50">
                 <span>✏️</span> Edit
               </button>
               <button
@@ -541,6 +640,24 @@ export default function StackEditor() {
       {error && (
         <div className="rounded-xl border border-dock-red/40 bg-dock-red/10 px-4 py-3 text-sm text-dock-red">
           {error}
+        </div>
+      )}
+
+      {notice && (
+        <div className="rounded-xl border border-dock-accent/40 bg-dock-accent/10 px-4 py-3 text-sm text-dock-accent">
+          {notice}
+        </div>
+      )}
+
+      {saveWarnings.length > 0 && (
+        <div className="rounded-xl border border-dock-yellow/40 bg-dock-yellow/10 px-4 py-3 text-sm text-dock-yellow">
+          <div className="flex items-start justify-between gap-3">
+            <div className="font-semibold">Saved. docker compose reported:</div>
+            <button type="button" onClick={() => setSaveWarnings([])} className="text-xs opacity-80 hover:opacity-100">Dismiss</button>
+          </div>
+          <ul className="mt-2 space-y-1 font-mono text-xs">
+            {saveWarnings.map((warning, index) => <li key={index} className="break-words">{warning}</li>)}
+          </ul>
         </div>
       )}
 
@@ -593,9 +710,9 @@ export default function StackEditor() {
                 <h2 className="text-xl font-medium text-white mb-3 tracking-tight">Container</h2>
                 <div className="space-y-3">
                   {stackData?.services.length ? stackData.services.map((svc) => {
-                    const hasUpdate = updates.some(u => 
-                      u.updateAvailable && u.context?.includes(`${name}/${svc.Service}`)
-                    );
+                    const serviceUpdates = updates.filter(u => contextIncludes(u.context, name as string, svc.Service));
+                    const hasUpdate = serviceUpdates.some(u => u.updateAvailable);
+                    const checkFailed = !hasUpdate && serviceUpdates.some(u => u.checkFailed);
                     return (
                       <div key={svc.Name} className={`rounded-[1.25rem] bg-dock-card p-4 border transition ${hasUpdate ? 'border-dock-yellow/50 shadow-[0_0_15px_rgba(234,179,8,0.1)]' : 'border-dock-border/50'}`}>
                         <div className="flex items-start justify-between gap-3">
@@ -607,11 +724,24 @@ export default function StackEditor() {
                                   <span>✨</span> UPDATE AVAILABLE
                                 </span>
                               )}
+                              {checkFailed && (
+                                <span
+                                  className="rounded-full bg-dock-border/50 px-2 py-0.5 text-[10px] font-semibold text-dock-muted"
+                                  title="The image could not be compared with the registry (not pulled locally, registry unreachable or not in DOCKWATCH_ALLOWED_REGISTRIES)."
+                                >
+                                  UPDATE STATUS UNKNOWN
+                                </span>
+                              )}
                             </div>
                             <div className="flex flex-wrap gap-2 mt-2">
-                              <span className={`rounded-xl px-3 py-1 text-xs font-semibold ${svc.State === 'running' ? 'bg-dock-accent/20 text-dock-accent' : 'bg-dock-border/50 text-dock-muted'}`}>
-                                {svc.State === 'running' ? 'running' : svc.State}
+                              <span className={`rounded-xl px-3 py-1 text-xs font-semibold ${serviceStateClasses(svc)}`}>
+                                {serviceStateLabel(svc)}
                               </span>
+                              {svc.Health && (
+                                <span className={`rounded-xl px-3 py-1 text-xs font-semibold ${healthClasses[svc.Health] || 'bg-dock-border/50 text-dock-muted'}`}>
+                                  {svc.Health}
+                                </span>
+                              )}
                             </div>
                         </div>
                         <div className="flex flex-col items-end gap-2">
@@ -630,7 +760,7 @@ export default function StackEditor() {
                   );
                 }) : (
                     <div className="rounded-[1.25rem] bg-dock-card p-6 text-center border border-dock-border/50">
-                      <p className="text-dock-muted font-medium">{isActive ? 'No containers found.' : 'No running container.'}</p>
+                      <p className="text-dock-muted font-medium">{isActive ? 'No containers found.' : 'No containers. Start the stack to create them.'}</p>
                     </div>
           )}
                 </div>
@@ -658,6 +788,7 @@ export default function StackEditor() {
                 <ul className="space-y-3 text-sm leading-6 text-dock-muted">
                     <li>Enter a stack name and provide a Docker Compose YAML file.</li>
                     <li>The project is saved and executed under <code>/opt/stacks/&lt;name&gt;</code>.</li>
+                    <li>Put secrets and variables in the <code>.env</code> tab. Compose substitutes <code>${'{'}VAR{'}'}</code> from it; new <code>.env</code> files are only readable by root.</li>
                     <li>Review port bindings and volume paths before starting the stack.</li>
                 </ul>
               </div>
@@ -672,7 +803,7 @@ export default function StackEditor() {
               onClick={() => setActiveTab('compose.yaml')}
               className={`px-4 py-2 rounded-t-xl text-sm font-medium transition ${activeTab === 'compose.yaml' ? 'bg-[#161720] text-white border-t border-l border-r border-dock-border/50' : 'text-dock-muted hover:text-white'}`}
             >
-              compose.yaml
+              {composeFileName}
               {isEditing ? (
                 <span
                   className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-semibold ${yamlValidation.valid ? 'bg-dock-green/20 text-dock-green' : 'bg-dock-red/20 text-dock-red'}`}
@@ -741,13 +872,61 @@ export default function StackEditor() {
       <ConfirmModal
         isOpen={showDeleteConfirm}
         title="Delete stack"
-        message={`Delete stack "${name}"? This will stop and remove all containers.`}
+        message={(
+          <div className="space-y-3">
+            <p>Delete stack <strong>{name}</strong>? Its containers are stopped and removed.</p>
+            <p className="text-dock-red">
+              The folder <code>{stackPath || `/opt/stacks/${name}`}</code> is deleted permanently, including {composeFileName}, the .env file and everything stored inside it.
+            </p>
+            {extraFiles.length > 0 && (
+              <div>
+                <p className="text-dock-muted">Also deleted from that folder:</p>
+                <ul className="mt-1 max-h-32 overflow-auto rounded-lg border border-dock-border/60 bg-dock-bg/40 px-3 py-2 font-mono text-xs">
+                  {extraFiles.map((file) => <li key={file}>{file}</li>)}
+                </ul>
+              </div>
+            )}
+            <p className="text-dock-muted">Named Docker volumes are kept.</p>
+          </div>
+        )}
         confirmLabel="Delete"
         confirmTone="danger"
         busy={actionLoading === 'delete'}
         onCancel={() => setShowDeleteConfirm(false)}
         onConfirm={confirmDelete}
       />
+
+      <AppModal
+        isOpen={historyOpen}
+        onClose={() => setHistoryOpen(false)}
+        title="Previous versions"
+        subtitle={name}
+        maxWidthClassName="max-w-lg"
+      >
+        {historyLoading ? (
+          <p className="text-sm text-dock-muted">Loading...</p>
+        ) : historyVersions.length === 0 ? (
+          <p className="text-sm text-dock-muted">No previous versions yet. DockWatch keeps the last 20 versions each time you save.</p>
+        ) : (
+          <ul className="space-y-2">
+            {historyVersions.map((version) => (
+              <li key={version.id} className="flex items-center justify-between gap-3 rounded-xl border border-dock-border/60 bg-dock-bg/30 px-3 py-2">
+                <div>
+                  <div className="text-sm font-medium text-white">{new Date(version.savedAt).toLocaleString()}</div>
+                  <div className="text-xs text-dock-muted">{version.hasEnv ? `${composeFileName} + .env` : composeFileName}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => loadHistoryVersion(version)}
+                  className="rounded-lg border border-dock-border px-3 py-1.5 text-xs font-semibold text-white transition hover:border-dock-accent/40 hover:bg-dock-panel"
+                >
+                  Load into editor
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </AppModal>
     </div>
   );
 }

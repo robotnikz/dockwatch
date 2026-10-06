@@ -4,6 +4,12 @@ import {
   listStacks,
   getComposeContent,
   saveComposeContent,
+  getEnvContent,
+  saveEnvContent,
+  getComposeFileName,
+  listExtraStackFiles,
+  stackExists,
+  validateComposeConfig,
   deleteStack,
   composeUp,
   composeDown,
@@ -13,62 +19,79 @@ import {
   composeManualUpdateService,
   composeLogs,
   composeContainerLogs,
-  composePs,
+  getContainersByProject,
+  computeStackStatus,
   getStackImages,
+  type StackContainer,
 } from '../services/docker.js';
 import { notifyStackAction } from '../services/discord.js';
 import { registerStack, removeStack } from '../db.js';
 import { stackDir, isValidComposeServiceName } from '../services/docker.js';
+import { deleteStackHistory, getStackHistoryVersion, listStackHistory, snapshotStack } from '../services/stackHistory.js';
 import { parseDocument } from 'yaml';
 
 type NameParams = { name: string };
 type NameServiceParams = { name: string; service: string };
+type NameVersionParams = { name: string; version: string };
 const router = Router();
 
 // List all stacks
 router.get('/', async (_req: Request, res: Response) => {
   try {
     const stacks = await listStacks();
-    const details = await Promise.all(
-      stacks.map(async (name) => {
-        let status = 'unknown';
-        let services: unknown[] = [];
-        try {
-          const psOutput = await composePs(name);
-          services = psOutput.trim() ? JSON.parse(`[${psOutput.trim().split('\n').join(',')}]`) : [];
-          if ((services as unknown[]).length === 0) {
-            status = 'stopped';
-          } else {
-            status = (services as { State: string }[]).every(s => s.State === 'running') ? 'running' : 'partial';
-          }
-        } catch {
-          status = 'stopped';
-        }
-        return { name, status, services };
-      })
-    );
+    let containers: Map<string, StackContainer[]> | null = null;
+    try {
+      containers = await getContainersByProject();
+    } catch (err) {
+      console.error('[Stacks] Failed to list containers:', err);
+    }
+
+    const details = stacks.map((name) => {
+      if (!containers) return { name, status: 'unknown', services: [] };
+      const services = containers.get(name.toLowerCase()) ?? [];
+      return { name, status: computeStackStatus(services), services };
+    });
     res.json(details);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Get stack compose content
+// Get stack compose and .env content
 router.get('/:name', async (req: Request<NameParams>, res: Response) => {
+  let content: string;
   try {
-    const content = await getComposeContent(req.params.name);
-    res.json({ name: req.params.name, content });
-  } catch (err: any) {
+    content = await getComposeContent(req.params.name);
+  } catch {
     res.status(404).json({ error: `Stack not found: ${req.params.name}` });
+    return;
+  }
+
+  try {
+    const [env, composeFile, extraFiles] = await Promise.all([
+      getEnvContent(req.params.name),
+      getComposeFileName(req.params.name),
+      listExtraStackFiles(req.params.name),
+    ]);
+    res.json({ name: req.params.name, path: stackDir(req.params.name), content, env, composeFile, extraFiles });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
   }
 });
 
-// Create or update stack
+// Create or update stack.
+// Body: { content: string, env?: string, create?: boolean }
+// - `env` omitted: the .env file is left untouched.
+// - `create: true`: refuses to overwrite an existing stack (409).
 router.put('/:name', async (req: Request<NameParams>, res: Response) => {
   try {
-    const { content } = req.body;
+    const { content, env, create } = req.body ?? {};
     if (!content || typeof content !== 'string') {
       res.status(400).json({ error: 'content (string) is required' });
+      return;
+    }
+    if (env !== undefined && typeof env !== 'string') {
+      res.status(400).json({ error: 'env must be a string' });
       return;
     }
 
@@ -79,10 +102,36 @@ router.put('/:name', async (req: Request<NameParams>, res: Response) => {
       return;
     }
 
-    await saveComposeContent(req.params.name, content);
-    const sDir = stackDir(req.params.name);
-    registerStack(req.params.name, sDir);
-    res.json({ ok: true, name: req.params.name });
+    const name = req.params.name;
+    const sDir = stackDir(name);
+    const exists = await stackExists(name);
+    if (create === true && exists) {
+      res.status(409).json({ error: `Stack "${name}" already exists. Open it from the sidebar to edit it.` });
+      return;
+    }
+
+    const warnings: string[] = [];
+    if (exists) {
+      const previousContent = await getComposeContent(name);
+      const previousEnv = await getEnvContent(name);
+      const envChanged = env !== undefined && env !== (previousEnv ?? '');
+      if (previousContent !== content || envChanged) {
+        try {
+          await snapshotStack(name, { content: previousContent, env: previousEnv });
+        } catch (err: any) {
+          warnings.push(`Previous version could not be saved to history: ${err.message}`);
+        }
+      }
+    }
+
+    await saveComposeContent(name, content);
+    if (env !== undefined) {
+      await saveEnvContent(name, env);
+    }
+    registerStack(name, sDir);
+
+    warnings.push(...await validateComposeConfig(name));
+    res.json({ ok: true, name, warnings });
   } catch (err: any) {
     res.status(400).json({ error: err.message });
   }
@@ -92,10 +141,29 @@ router.put('/:name', async (req: Request<NameParams>, res: Response) => {
 router.delete('/:name', async (req: Request<NameParams>, res: Response) => {
   try {
     await deleteStack(req.params.name);
+    await deleteStackHistory(req.params.name);
     removeStack(req.params.name);
     res.json({ ok: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// Previous versions of the compose/.env files
+router.get('/:name/history', async (req: Request<NameParams>, res: Response) => {
+  try {
+    res.json({ versions: await listStackHistory(req.params.name) });
+  } catch (err: any) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+router.get('/:name/history/:version', async (req: Request<NameVersionParams>, res: Response) => {
+  try {
+    res.json(await getStackHistoryVersion(req.params.name, req.params.version));
+  } catch (err: any) {
+    const status = err?.code === 'ENOENT' ? 404 : 400;
+    res.status(status).json({ error: status === 404 ? 'Version not found' : err.message });
   }
 });
 
