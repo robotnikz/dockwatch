@@ -2,7 +2,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { spawn, spawnSync } from 'node:child_process';
+import { execFile, spawn, spawnSync } from 'node:child_process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_UPDATE_DIR = '/opt/dockwatch';
@@ -12,13 +12,81 @@ const DATA_DIR = String(process.env.DOCKWATCH_DATA || '').trim();
 const COMPOSE_FILE_CANDIDATES = ['docker-compose.yml', 'docker-compose.yaml', 'compose.yaml', 'compose.yml'];
 const UPDATE_LOCK_FILE = path.join(os.tmpdir(), 'dockwatch-self-update.lock');
 const UPDATE_LOCK_STALE_MS = 15 * 60 * 1000;
+const HELPER_CONTAINER_NAME = 'dockwatch-self-update';
+const DOCKER_SOCKET = '/var/run/docker.sock';
 
 export interface SelfUpdateInfo {
   enabled: boolean;
   supported: boolean;
+  /**
+   * helper: DockWatch runs in a compose-managed container; a short-lived helper container
+   *         pulls and recreates it (the update must not run inside the container it replaces).
+   * local:  DockWatch runs directly on the host next to its compose file.
+   */
+  mode: 'helper' | 'local' | null;
   workingDir: string;
   composeFile: string | null;
   reason?: string;
+}
+
+interface OwnContainer {
+  image: string;
+  project: string;
+  service: string;
+  workingDir: string;
+  configFiles: string[];
+  socketSource: string | null;
+}
+
+function runDocker(args: string[], timeoutMs = 20_000): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile('docker', args, { timeout: timeoutMs }, (err, stdout, stderr) => {
+      if (err) {
+        reject(new Error(String(stderr || err.message).trim()));
+        return;
+      }
+      resolve(String(stdout));
+    });
+  });
+}
+
+/** ID of the container DockWatch runs in, or null when it runs directly on a host. */
+export function detectOwnContainerId(): string | null {
+  try {
+    // Docker bind-mounts /etc/hostname from /var/lib/docker/containers/<id>/hostname.
+    const mountinfo = fs.readFileSync('/proc/self/mountinfo', 'utf-8');
+    const match = mountinfo.match(/\/containers\/([0-9a-f]{64})\/hostname \/etc\/hostname /);
+    if (match) return match[1];
+  } catch {
+    // Not on Linux or no procfs.
+  }
+
+  if (!fs.existsSync('/.dockerenv')) return null;
+  const hostname = os.hostname();
+  return /^[0-9a-f]{12,64}$/.test(hostname) ? hostname : null;
+}
+
+let ownContainerCache: OwnContainer | null = null;
+
+async function inspectOwnContainer(containerId: string): Promise<OwnContainer> {
+  if (ownContainerCache) return ownContainerCache;
+
+  const raw = JSON.parse(await runDocker(['inspect', containerId, '--format', '{{json .}}']));
+  const labels: Record<string, string> = raw?.Config?.Labels ?? {};
+  const mounts: Array<{ Source?: string; Destination?: string }> = Array.isArray(raw?.Mounts) ? raw.Mounts : [];
+  const own: OwnContainer = {
+    image: String(raw?.Image || ''),
+    project: String(labels['com.docker.compose.project'] || ''),
+    service: String(labels['com.docker.compose.service'] || ''),
+    workingDir: String(labels['com.docker.compose.project.working_dir'] || ''),
+    configFiles: String(labels['com.docker.compose.project.config_files'] || '')
+      .split(',')
+      .map((file) => file.trim())
+      .filter(Boolean),
+    socketSource: mounts.find((mount) => mount.Destination === DOCKER_SOCKET)?.Source || null,
+  };
+  ownContainerCache = own;
+  return own;
 }
 
 function getCandidateWorkingDirs(): string[] {
@@ -52,18 +120,6 @@ function resolveComposeFile(dir: string): string | null {
     if (fs.existsSync(path.join(dir, candidate))) return candidate;
   }
   return null;
-}
-
-function getComposeDebugSummary(dirs: string[]): string {
-  return dirs
-    .map((dir) => {
-      const matches = COMPOSE_FILE_CANDIDATES.filter((file) => fs.existsSync(path.join(dir, file)));
-      if (matches.length > 0) {
-        return `${dir} (found: ${matches.join(', ')})`;
-      }
-      return `${dir} (checked: ${COMPOSE_FILE_CANDIDATES.join(', ')})`;
-    })
-    .join('; ');
 }
 
 function shQuote(value: string): string {
@@ -112,58 +168,109 @@ function assertDockerComposeAvailable(): void {
   }
 }
 
-export function getSelfUpdateInfo(): SelfUpdateInfo {
-  const enabled = String(process.env.DOCKWATCH_SELF_UPDATE_ENABLED || 'true').trim().toLowerCase() !== 'false';
+function getLocalSelfUpdateInfo(enabled: boolean): SelfUpdateInfo {
   const dirs = getCandidateWorkingDirs();
-
-  if (!enabled) {
-    return {
-      enabled,
-      supported: false,
-      workingDir: dirs[0] || DEFAULT_UPDATE_DIR,
-      composeFile: null,
-      reason: 'Self-update disabled by environment',
-    };
-  }
-
   for (const workingDir of dirs) {
     const composeFile = resolveComposeFile(workingDir);
     if (composeFile) {
-      return {
-        enabled,
-        supported: true,
-        workingDir,
-        composeFile,
-      };
+      return { enabled, supported: true, mode: 'local', workingDir, composeFile };
     }
-  }
-
-  if (dirs.length === 0) {
-    return {
-      enabled,
-      supported: false,
-      workingDir: DEFAULT_UPDATE_DIR,
-      composeFile: null,
-      reason: 'No self-update directories available',
-    };
   }
 
   return {
     enabled,
     supported: false,
-    workingDir: dirs[0],
+    mode: null,
+    workingDir: dirs[0] || DEFAULT_UPDATE_DIR,
     composeFile: null,
-    reason: `No compose file found in candidates: ${dirs.join(', ')}. Details: ${getComposeDebugSummary(dirs)}`,
+    reason: `No compose file found in candidates: ${dirs.join(', ')}`,
   };
 }
 
-export function triggerSelfUpdate(): { accepted: boolean; reloadAfterSeconds: number } {
-  const info = getSelfUpdateInfo();
-  if (!info.supported || !info.composeFile) {
-    throw new Error(info.reason || 'Self-update is not available');
+export async function getSelfUpdateInfo(): Promise<SelfUpdateInfo> {
+  const enabled = String(process.env.DOCKWATCH_SELF_UPDATE_ENABLED || 'true').trim().toLowerCase() !== 'false';
+  if (!enabled) {
+    return {
+      enabled,
+      supported: false,
+      mode: null,
+      workingDir: DEFAULT_UPDATE_DIR,
+      composeFile: null,
+      reason: 'Self-update disabled by environment',
+    };
   }
 
-  const composePath = path.join(info.workingDir, info.composeFile);
+  const containerId = detectOwnContainerId();
+  if (!containerId) return getLocalSelfUpdateInfo(enabled);
+
+  const unsupported = (reason: string, workingDir = DEFAULT_UPDATE_DIR): SelfUpdateInfo => ({
+    enabled, supported: false, mode: null, workingDir, composeFile: null, reason,
+  });
+
+  let own: OwnContainer;
+  try {
+    own = await inspectOwnContainer(containerId);
+  } catch (err: any) {
+    return unsupported(`Cannot inspect the DockWatch container: ${err?.message || 'unknown error'}`);
+  }
+  if (!own.project || !own.service || !own.workingDir) {
+    return unsupported('DockWatch was not started with docker compose. Update it with your own tooling.');
+  }
+  if (!own.socketSource) {
+    return unsupported(`Self-update needs the Docker socket mounted at ${DOCKER_SOCKET}.`, own.workingDir);
+  }
+  return {
+    enabled,
+    supported: true,
+    mode: 'helper',
+    workingDir: own.workingDir,
+    composeFile: own.configFiles.join(', ') || null,
+  };
+}
+
+async function triggerHelperSelfUpdate(own: OwnContainer): Promise<void> {
+  const composeArgs = [
+    'compose',
+    '-p', own.project,
+    '--project-directory', own.workingDir,
+    ...own.configFiles.flatMap((file) => ['-f', file]),
+  ].map(shQuote).join(' ');
+  const service = shQuote(own.service);
+  const script = [
+    'set -e',
+    'sleep 2',
+    `docker ${composeArgs} pull ${service}`,
+    `docker ${composeArgs} up -d --no-deps ${service}`,
+  ].join('; ');
+
+  // The helper needs the compose project files at their host paths (read-only).
+  const mountDirs = new Set([own.workingDir, ...own.configFiles.map((file) => path.dirname(file))]);
+  const args = [
+    'run', '-d', '--rm',
+    '--name', HELPER_CONTAINER_NAME,
+    '--label', 'dockwatch.helper=self-update',
+    '-v', `${own.socketSource}:${DOCKER_SOCKET}`,
+    ...[...mountDirs].flatMap((dir) => ['-v', `${dir}:${dir}:ro`]),
+    '-w', own.workingDir,
+    '--entrypoint', 'sh',
+    // The current image already ships the docker CLI with the compose plugin.
+    own.image,
+    '-c', script,
+  ];
+
+  try {
+    await runDocker(args, 60_000);
+  } catch (err: any) {
+    const message = String(err?.message || '');
+    if (/already in use|Conflict/i.test(message)) {
+      throw new Error('Self-update already running');
+    }
+    throw new Error(`Failed to start self-update helper: ${message || 'unknown error'}`);
+  }
+}
+
+function triggerLocalSelfUpdate(info: SelfUpdateInfo): void {
+  const composePath = path.join(info.workingDir, info.composeFile as string);
   if (!fs.existsSync(composePath)) {
     throw new Error(`Compose file not found: ${composePath}`);
   }
@@ -195,6 +302,21 @@ export function triggerSelfUpdate(): { accepted: boolean; reloadAfterSeconds: nu
       // Ignore lock cleanup errors and bubble the original spawn error.
     }
     throw new Error(`Failed to start self-update process: ${err?.message || 'unknown error'}`);
+  }
+}
+
+export async function triggerSelfUpdate(): Promise<{ accepted: boolean; reloadAfterSeconds: number }> {
+  const info = await getSelfUpdateInfo();
+  if (!info.supported) {
+    throw new Error(info.reason || 'Self-update is not available');
+  }
+
+  if (info.mode === 'helper') {
+    const containerId = detectOwnContainerId();
+    if (!containerId) throw new Error('Self-update is not available');
+    await triggerHelperSelfUpdate(await inspectOwnContainer(containerId));
+  } else {
+    triggerLocalSelfUpdate(info);
   }
 
   return { accepted: true, reloadAfterSeconds: 30 };

@@ -251,6 +251,12 @@ export default function Settings() {
           <h2 className="text-xl font-bold text-white mb-4">Update Checker</h2>
 
           <div className="space-y-4">
+            <ToggleRow
+              label="Apply updates automatically"
+              description="On each scheduled check, pull and recreate running services with new images (skips services labeled dockwatch.update.exclude). When off, DockWatch only checks and notifies."
+              checked={boolValue('auto_update_enabled', true)}
+              onToggle={() => handleToggle('auto_update_enabled', true)}
+            />
             <div>
               <label className="mb-2 block text-sm font-medium text-dock-text">Schedule Mode</label>
               <select

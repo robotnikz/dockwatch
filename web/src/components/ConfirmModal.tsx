@@ -1,9 +1,10 @@
+import type { ReactNode } from 'react';
 import AppModal from './AppModal';
 
 interface ConfirmModalProps {
   isOpen: boolean;
   title: string;
-  message: string;
+  message: ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
   confirmTone?: 'danger' | 'primary';
@@ -55,7 +56,7 @@ export default function ConfirmModal({
         </div>
       )}
     >
-      <p className="text-sm text-dock-text">{message}</p>
+      <div className="text-sm text-dock-text">{message}</div>
     </AppModal>
   );
 }

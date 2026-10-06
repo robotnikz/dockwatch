@@ -15,12 +15,22 @@ const mocks = vi.hoisted(() => ({
   composeManualUpdateService: vi.fn(),
   composeLogs: vi.fn(),
   composeContainerLogs: vi.fn(),
-  composePs: vi.fn(),
+  getContainersByProject: vi.fn(),
+  getEnvContent: vi.fn(),
+  saveEnvContent: vi.fn(),
+  getComposeFileName: vi.fn(),
+  listExtraStackFiles: vi.fn(),
+  stackExists: vi.fn(),
+  validateComposeConfig: vi.fn(),
   getStackImages: vi.fn(),
   stackDir: vi.fn(),
   notifyStackAction: vi.fn(),
   registerStack: vi.fn(),
   removeStack: vi.fn(),
+  snapshotStack: vi.fn(),
+  listStackHistory: vi.fn(),
+  getStackHistoryVersion: vi.fn(),
+  deleteStackHistory: vi.fn(),
 }));
 
 vi.mock('../src/services/docker.js', () => ({
@@ -36,10 +46,24 @@ vi.mock('../src/services/docker.js', () => ({
   composeManualUpdateService: mocks.composeManualUpdateService,
   composeLogs: mocks.composeLogs,
   composeContainerLogs: mocks.composeContainerLogs,
-  composePs: mocks.composePs,
+  getContainersByProject: mocks.getContainersByProject,
+  computeStackStatus: actualComputeStackStatus,
+  getEnvContent: mocks.getEnvContent,
+  saveEnvContent: mocks.saveEnvContent,
+  getComposeFileName: mocks.getComposeFileName,
+  listExtraStackFiles: mocks.listExtraStackFiles,
+  stackExists: mocks.stackExists,
+  validateComposeConfig: mocks.validateComposeConfig,
   getStackImages: mocks.getStackImages,
   stackDir: mocks.stackDir,
   isValidComposeServiceName: (service: string) => /^[a-zA-Z0-9_][a-zA-Z0-9_.-]*$/.test(String(service || '').trim()),
+}));
+
+vi.mock('../src/services/stackHistory.js', () => ({
+  snapshotStack: mocks.snapshotStack,
+  listStackHistory: mocks.listStackHistory,
+  getStackHistoryVersion: mocks.getStackHistoryVersion,
+  deleteStackHistory: mocks.deleteStackHistory,
 }));
 
 vi.mock('../src/services/discord.js', () => ({
@@ -51,6 +75,7 @@ vi.mock('../src/db.js', () => ({
   removeStack: mocks.removeStack,
 }));
 
+const { computeStackStatus: actualComputeStackStatus } = await vi.importActual<typeof import('../src/services/docker.js')>('../src/services/docker.js');
 const { default: stacksRouter } = await import('../src/routes/stacks.js');
 
 function buildApp() {
@@ -118,49 +143,164 @@ describe('stacks routes', () => {
   it('saves stack and registers path', async () => {
     mocks.saveComposeContent.mockResolvedValue(undefined);
     mocks.stackDir.mockReturnValue('/opt/stacks/demo');
+    mocks.stackExists.mockResolvedValue(false);
+    mocks.validateComposeConfig.mockResolvedValue([]);
     mocks.registerStack.mockReturnValue(undefined);
 
     const res = await request(buildApp())
       .put('/stacks/demo')
-      .send({ content: 'services:\\n  app:\\n    image: nginx:latest\\n' });
+      .send({ content: 'services:\n  app:\n    image: nginx:latest\n' });
 
     expect(res.status).toBe(200);
     expect(mocks.saveComposeContent).toHaveBeenCalledWith('demo', expect.any(String));
     expect(mocks.registerStack).toHaveBeenCalledWith('demo', '/opt/stacks/demo');
-    expect(res.body.ok).toBe(true);
+    expect(mocks.saveEnvContent).not.toHaveBeenCalled();
+    expect(mocks.snapshotStack).not.toHaveBeenCalled();
+    expect(res.body).toEqual({ ok: true, name: 'demo', warnings: [] });
   });
 
-  it('lists stacks with running, partial, and stopped status resolution', async () => {
-    mocks.listStacks.mockResolvedValue(['run', 'partial', 'stopped']);
-    mocks.composePs
-      .mockResolvedValueOnce('{"Name":"a","State":"running"}\n{"Name":"b","State":"running"}')
-      .mockResolvedValueOnce('{"Name":"a","State":"running"}\n{"Name":"b","State":"exited"}')
-      .mockResolvedValueOnce('');
+  it('writes the .env file only when env is part of the request', async () => {
+    mocks.stackDir.mockReturnValue('/opt/stacks/demo');
+    mocks.stackExists.mockResolvedValue(true);
+    mocks.getComposeContent.mockResolvedValue('services:\n  app:\n    image: nginx:latest\n');
+    mocks.getEnvContent.mockResolvedValue('PORT=8080\n');
+    mocks.validateComposeConfig.mockResolvedValue([]);
+
+    const res = await request(buildApp())
+      .put('/stacks/demo')
+      .send({ content: 'services:\n  app:\n    image: nginx:latest\n', env: 'PORT=9090\n' });
+
+    expect(res.status).toBe(200);
+    expect(mocks.saveEnvContent).toHaveBeenCalledWith('demo', 'PORT=9090\n');
+    // The previous state is kept in the history because the .env changed.
+    expect(mocks.snapshotStack).toHaveBeenCalledWith('demo', {
+      content: 'services:\n  app:\n    image: nginx:latest\n',
+      env: 'PORT=8080\n',
+    });
+  });
+
+  it('ignores the legacy envContent field so old clients cannot wipe .env files', async () => {
+    mocks.stackDir.mockReturnValue('/opt/stacks/demo');
+    mocks.stackExists.mockResolvedValue(true);
+    mocks.getComposeContent.mockResolvedValue('services:\n  app:\n    image: nginx:latest\n');
+    mocks.getEnvContent.mockResolvedValue('SECRET=1\n');
+    mocks.validateComposeConfig.mockResolvedValue([]);
+
+    const res = await request(buildApp())
+      .put('/stacks/demo')
+      .send({ content: 'services:\n  app:\n    image: nginx:latest\n', envContent: '' });
+
+    expect(res.status).toBe(200);
+    expect(mocks.saveEnvContent).not.toHaveBeenCalled();
+    // Nothing changed, so no history entry is written.
+    expect(mocks.snapshotStack).not.toHaveBeenCalled();
+  });
+
+  it('rejects a non-string env value', async () => {
+    const res = await request(buildApp())
+      .put('/stacks/demo')
+      .send({ content: 'services: {}\n', env: 42 });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('env must be a string');
+    expect(mocks.saveComposeContent).not.toHaveBeenCalled();
+  });
+
+  it('refuses to overwrite an existing stack when creating', async () => {
+    mocks.stackDir.mockReturnValue('/opt/stacks/demo');
+    mocks.stackExists.mockResolvedValue(true);
+
+    const res = await request(buildApp())
+      .put('/stacks/demo')
+      .send({ content: 'services:\n  app:\n    image: nginx:latest\n', env: '', create: true });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toContain('already exists');
+    expect(mocks.saveComposeContent).not.toHaveBeenCalled();
+    expect(mocks.saveEnvContent).not.toHaveBeenCalled();
+  });
+
+  it('returns compose config warnings and still saves', async () => {
+    mocks.stackDir.mockReturnValue('/opt/stacks/demo');
+    mocks.stackExists.mockResolvedValue(false);
+    mocks.validateComposeConfig.mockResolvedValue(['WARN[0000] The "TOKEN" variable is not set.']);
+
+    const res = await request(buildApp())
+      .put('/stacks/demo')
+      .send({ content: 'services:\n  app:\n    image: nginx:latest\n', env: '', create: true });
+
+    expect(res.status).toBe(200);
+    expect(res.body.warnings).toEqual(['WARN[0000] The "TOKEN" variable is not set.']);
+    expect(mocks.saveComposeContent).toHaveBeenCalled();
+  });
+
+  it('keeps saving when the history snapshot fails and reports it', async () => {
+    mocks.stackDir.mockReturnValue('/opt/stacks/demo');
+    mocks.stackExists.mockResolvedValue(true);
+    mocks.getComposeContent.mockResolvedValue('services: {}\n');
+    mocks.getEnvContent.mockResolvedValue(null);
+    mocks.snapshotStack.mockRejectedValue(new Error('disk full'));
+    mocks.validateComposeConfig.mockResolvedValue([]);
+
+    const res = await request(buildApp())
+      .put('/stacks/demo')
+      .send({ content: 'services:\n  app:\n    image: nginx:latest\n' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.warnings[0]).toContain('disk full');
+    expect(mocks.saveComposeContent).toHaveBeenCalled();
+  });
+
+  it('lists stacks with running, partial, and stopped status resolution from one docker ps', async () => {
+    mocks.listStacks.mockResolvedValue(['Run', 'partial', 'stopped', 'oneshot']);
+    const c = (Service: string, State: string, ExitCode: number | null = null) => ({
+      Name: `x-${Service}`, Service, State, Status: '', Health: '', Image: 'img', ExitCode,
+    });
+    mocks.getContainersByProject.mockResolvedValue(new Map([
+      ['run', [c('a', 'running'), c('b', 'running')]],
+      ['partial', [c('a', 'running'), c('b', 'exited', 137)]],
+      ['stopped', [c('a', 'exited', 0)]],
+      ['oneshot', [c('app', 'running'), c('migrate', 'exited', 0)]],
+    ]));
 
     const res = await request(buildApp()).get('/stacks');
 
     expect(res.status).toBe(200);
-    expect(res.body).toHaveLength(3);
-    expect(res.body[0]).toMatchObject({ name: 'run', status: 'running' });
+    expect(mocks.getContainersByProject).toHaveBeenCalledTimes(1);
+    expect(res.body).toHaveLength(4);
+    expect(res.body[0]).toMatchObject({ name: 'Run', status: 'running' });
+    expect(res.body[0].services).toHaveLength(2);
     expect(res.body[1]).toMatchObject({ name: 'partial', status: 'partial' });
     expect(res.body[2]).toMatchObject({ name: 'stopped', status: 'stopped' });
+    expect(res.body[3]).toMatchObject({ name: 'oneshot', status: 'running' });
   });
 
-  it('falls back to stopped status when compose ps fails', async () => {
+  it('reports unknown status when docker ps fails', async () => {
     mocks.listStacks.mockResolvedValue(['demo']);
-    mocks.composePs.mockRejectedValue(new Error('ps failed'));
+    mocks.getContainersByProject.mockRejectedValue(new Error('ps failed'));
 
     const res = await request(buildApp()).get('/stacks');
 
     expect(res.status).toBe(200);
-    expect(res.body[0]).toMatchObject({ name: 'demo', status: 'stopped' });
+    expect(res.body[0]).toMatchObject({ name: 'demo', status: 'unknown', services: [] });
   });
 
-  it('returns stack compose content and 404 when missing', async () => {
+  it('returns stack compose and .env content and 404 when missing', async () => {
     mocks.getComposeContent.mockResolvedValueOnce('services:\n  app:\n    image: nginx\n');
+    mocks.getEnvContent.mockResolvedValueOnce('PORT=8080\n');
+    mocks.getComposeFileName.mockResolvedValueOnce('docker-compose.yml');
+    mocks.listExtraStackFiles.mockResolvedValueOnce(['data/']);
+    mocks.stackDir.mockReturnValue('/opt/stacks/demo');
     const okRes = await request(buildApp()).get('/stacks/demo');
     expect(okRes.status).toBe(200);
-    expect(okRes.body.name).toBe('demo');
+    expect(okRes.body).toEqual({
+      name: 'demo',
+      path: '/opt/stacks/demo',
+      content: 'services:\n  app:\n    image: nginx\n',
+      env: 'PORT=8080\n',
+      composeFile: 'docker-compose.yml',
+      extraFiles: ['data/'],
+    });
 
     mocks.getComposeContent.mockRejectedValueOnce(new Error('missing'));
     const notFoundRes = await request(buildApp()).get('/stacks/missing');
@@ -177,7 +317,38 @@ describe('stacks routes', () => {
     expect(res.status).toBe(200);
     expect(res.body.ok).toBe(true);
     expect(mocks.deleteStack).toHaveBeenCalledWith('demo');
+    expect(mocks.deleteStackHistory).toHaveBeenCalledWith('demo');
     expect(mocks.removeStack).toHaveBeenCalledWith('demo');
+  });
+
+  it('lists and returns previous versions', async () => {
+    mocks.listStackHistory.mockResolvedValue([
+      { id: '20261006T101500000Z', savedAt: '2026-10-06T10:15:00.000Z', hasEnv: true },
+    ]);
+    mocks.getStackHistoryVersion.mockResolvedValue({ content: 'services: {}\n', env: 'A=1\n' });
+
+    const list = await request(buildApp()).get('/stacks/demo/history');
+    expect(list.status).toBe(200);
+    expect(list.body.versions).toHaveLength(1);
+
+    const version = await request(buildApp()).get('/stacks/demo/history/20261006T101500000Z');
+    expect(version.status).toBe(200);
+    expect(version.body).toEqual({ content: 'services: {}\n', env: 'A=1\n' });
+    expect(mocks.getStackHistoryVersion).toHaveBeenCalledWith('demo', '20261006T101500000Z');
+  });
+
+  it('maps missing and invalid history versions to 404 and 400', async () => {
+    mocks.getStackHistoryVersion.mockRejectedValueOnce(Object.assign(new Error('nope'), { code: 'ENOENT' }));
+    const missing = await request(buildApp()).get('/stacks/demo/history/20261006T101500000Z');
+    expect(missing.status).toBe(404);
+
+    mocks.getStackHistoryVersion.mockRejectedValueOnce(new Error('Invalid version id: x'));
+    const invalid = await request(buildApp()).get('/stacks/demo/history/x');
+    expect(invalid.status).toBe(400);
+
+    mocks.listStackHistory.mockRejectedValueOnce(new Error('Invalid stack name: ..'));
+    const badList = await request(buildApp()).get('/stacks/demo/history');
+    expect(badList.status).toBe(400);
   });
 
   it('runs non-stream stack actions and returns command output', async () => {

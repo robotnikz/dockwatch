@@ -8,6 +8,7 @@ const ALLOWED_KEYS = new Set([
   'discord_notify_status_changes',
   'discord_notify_scheduler_errors',
   'check_cron',
+  'auto_update_enabled',
   'update_exclusions',
   'prunemate_url',
   'cleanup_schedule_enabled',
